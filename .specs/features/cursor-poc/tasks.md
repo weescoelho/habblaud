@@ -165,11 +165,12 @@ T17 → T18
 
 **Done when**:
 
-- [ ] `CursorLive.applyHookEvent(input: Record<string, unknown>): boolean` definido e exportado, com doc em PT-BR
-- [ ] Gate check passes: `npm run typecheck`
+- [x] `CursorLive.applyHookEvent(input: Record<string, unknown>): boolean` definido e exportado, com doc em PT-BR
+- [x] Gate check passes: `npm run typecheck`
 
 **Tests**: none
 **Gate**: build
+**Status**: ✅ Done
 
 **Commit**: `feat(cursor): definir o contrato CursorLive`
 

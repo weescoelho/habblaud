@@ -172,7 +172,7 @@ Each requirement gets a unique ID for tracking across design, tasks, and validat
 
 | Requirement ID | Story       | Phase  | Status  |
 | -------------- | ----------- | ------ | ------- |
-| CPOC-01        | P1: Ingest  | Design | Pending |
+| CPOC-01        | P1: Ingest  | Design | Implementing |
 | CPOC-02        | P1: Ingest  | Design | Pending |
 | CPOC-03        | P1: Ingest  | Design | Pending |
 | CPOC-04        | P1: Ingest  | Design | Pending |
