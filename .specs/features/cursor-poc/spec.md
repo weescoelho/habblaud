@@ -195,7 +195,7 @@ Each requirement gets a unique ID for tracking across design, tasks, and validat
 | CPOC-21        | P2: Transcript | Design | Implementing |
 | CPOC-22        | P2: Transcript | Design | Implementing |
 | CPOC-23        | P2: Transcript | Design | Implementing |
-| CPOC-24        | P3: Decision | Design | Pending |
+| CPOC-24        | P3: Decision | Design | Implementing |
 | CPOC-25        | P3: Decision | Design | Pending |
 | CPOC-26        | P3: Decision | Design | Pending |
 | CPOC-27        | P3: Decision | Design | Pending |

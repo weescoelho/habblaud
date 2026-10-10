@@ -470,15 +470,17 @@ T17 → T18
 
 **Done when**:
 
-- [ ] `parseHookInput` aceita `provider: 'cursor'` mantendo o shape de `PermissionRequestInfo`
-- [ ] `register` resolve o agente do Cursor pelo `conversation_id` (`session_id`) e monta título/resumo pela tradução de ferramenta do Cursor; `interrupt` e sugestão são `unsupported` para `cursor` (como para `codex`)
-- [ ] Snapshots/decisões/expiração/esquecimento continuam idênticos para `claude` e `codex` (nenhuma mudança de comportamento fora da guarda `provider === 'cursor'`)
-- [ ] `server/permissions/cursor.test.ts` (novo) cobre registrar/decidir/expirar `cursor` e a recusa de `interrupt`/sugestão; `server/permissions/registry.test.ts` e `server/permissions/codex.test.ts` continuam verdes
-- [ ] Gate check passes: `npm test`
-- [ ] Test count: 6+ casos passam (sem deleções silenciosas)
+- [x] `parseHookInput` aceita `provider: 'cursor'` mantendo o shape de `PermissionRequestInfo`
+- [x] `register` resolve o agente do Cursor pelo `conversation_id` (`session_id`) e monta título/resumo pela tradução de ferramenta do Cursor; `interrupt` e sugestão são `unsupported` para `cursor` (como para `codex`)
+- [x] Snapshots/decisões/expiração/esquecimento continuam idênticos para `claude` e `codex` (nenhuma mudança de comportamento fora da guarda `provider === 'cursor'`)
+- [x] `server/permissions/cursor.test.ts` (novo) cobre registrar/decidir/expirar `cursor` e a recusa de `interrupt`/sugestão; `server/permissions/registry.test.ts` e `server/permissions/codex.test.ts` continuam verdes
+- [x] Gate check passes: `npm test`
+- [x] Test count: 6+ casos passam (sem deleções silenciosas)
 
 **Tests**: integration
 **Gate**: full
+
+**Status**: ✅ Done
 
 **Commit**: `feat(cursor): registrar pedidos do Cursor no PermissionRegistry`
 
