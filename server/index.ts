@@ -29,10 +29,12 @@ import { createCodexQueueRunner, findCodexBin } from './messages/codex';
 import { createMessageRoutes } from './messages/http';
 import { MessageRegistry } from './messages/registry';
 import type { CodexLive } from './sources/codex/live';
+import type { CursorLive } from './sources/cursor/live';
 import { ClaudeWatcher } from './sources/watcher';
 import { discoverCodexDirs } from './sources/codex/accounts';
 import { CodexHistory } from './sources/codex/history';
 import { CodexSource } from './sources/codex/source';
+import { CursorSource } from './sources/cursor/source';
 import { createBuildReader } from './build';
 import { UpdateChecker } from './updates/checker';
 
@@ -99,6 +101,12 @@ if (codex) agents.add(codex);
 // Eventos dos hooks do Codex (POST /api/codex/events, mod/habblaud-codex/hook.mjs): vão para a fonte do Codex ao vivo
 // (CodexLive); sem ela (nenhuma pasta do Codex ou HABBLAUD_CODEX=0) a rota responde {ok: false}.
 const codexLive: CodexLive | undefined = codex;
+// Eventos dos hooks do Cursor (POST /api/cursor/events, mod/habblaud-cursor/hook.mjs): o Cursor não tem registro local de
+// sessões (lacuna C2), então a fonte existe sempre que HABBLAUD_CURSOR não está desligada e fica inerte sem eventos;
+// ela cria/atualiza o agente Cursor no Office ao receber os hooks (CursorLive).
+const cursor = config.cursor ? new CursorSource({ accounts, office, home: config.home }) : undefined;
+if (cursor) agents.add(cursor);
+const cursorLive: CursorLive | undefined = cursor;
 late.office = office;
 late.agents = agents;
 const hub = new Hub(office);
@@ -193,6 +201,7 @@ const api = createApiHandler({
   permissions: permissions ? createPermissionRoutes(permissions) : undefined,
   messages: messages ? createMessageRoutes(messages) : undefined,
   codexLive,
+  cursorLive,
   stats,
   updates,
 });
@@ -268,6 +277,16 @@ server.listen(config.port, config.host, () => {
     }
   } else {
     log.info(`   Codex: ${config.codex ? 'nenhuma pasta do Codex encontrada (defina HABBLAUD_CODEX_DIRS)' : 'desligado (HABBLAUD_CODEX=0)'}.`);
+  }
+  if (cursor) {
+    const cursorAccounts = cursor.accountEntries();
+    const open = cursor.sources().reduce((n, s) => n + s.sessions, 0);
+    log.info(`   Cursor: ${cursorAccounts.length} conta(s), ${open} sessão(ões) aberta(s).`);
+    for (const a of cursorAccounts) {
+      log.info(`   Conta ${a.detected.short} do Cursor (${a.id}): uso: ${accounts.usageView(a.id).status} · ${a.detected.configDir}`);
+    }
+  } else {
+    log.info('   Cursor: desligado (HABBLAUD_CURSOR=0).');
   }
   if (office.isDemo()) log.info('   Modo demonstração ligado (agentes simulados misturados aos reais).');
   if (config.terminal) log.info('   Terminal: ligado (acesso só local).');

@@ -312,13 +312,14 @@ T17 → T18
 
 **Done when**:
 
-- [ ] `config.cursor` ligada cria `new CursorSource({ accounts, office, home: config.home })`, adicionada a `agents`; `cursorLive = cursor`; `cursorLive` passado no `createApiHandler`
-- [ ] `HABBLAUD_CURSOR=0` → nenhuma fonte criada, `cursorLive` ausente, sem mudança nas fontes Claude/Codex
-- [ ] Log de boot informa as contas/sessões do Cursor (ou "desligado"), em PT-BR
-- [ ] Gate check passes: `npm run typecheck && npm test && npm run build`
+- [x] `config.cursor` ligada cria `new CursorSource({ accounts, office, home: config.home })`, adicionada a `agents`; `cursorLive = cursor`; `cursorLive` passado no `createApiHandler`
+- [x] `HABBLAUD_CURSOR=0` → nenhuma fonte criada, `cursorLive` ausente, sem mudança nas fontes Claude/Codex
+- [x] Log de boot informa as contas/sessões do Cursor (ou "desligado"), em PT-BR
+- [x] Gate check passes: `npm run typecheck && npm test && npm run build`
 
 **Tests**: none
 **Gate**: build
+**Status**: ✅ Done
 
 **Commit**: `feat(cursor): ligar a fonte do Cursor no servidor`
 
