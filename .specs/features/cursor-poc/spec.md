@@ -214,9 +214,9 @@ Each requirement gets a unique ID for tracking across design, tasks, and validat
 
 How we know the feature is successful:
 
-- [ ] Um agente `cursor` aparece/muda de estado/sai no `Office` a partir de eventos simulados,
+- [x] Um agente `cursor` aparece/muda de estado/sai no `Office` a partir de eventos simulados,
       com o gate de testes verde e sem regressão das suítes existentes.
-- [ ] Os três harnesses (hooks, transcript, decisão) rodam localmente com `HOME`/diretório
+- [x] Os três harnesses (hooks, transcript, decisão) rodam localmente com `HOME`/diretório
       temporários e produzem seus relatórios sem depender do Cursor.
-- [ ] Existe um runbook único que executa P0–P3 numa máquina com Cursor e devolve os
+- [x] Existe um runbook único que executa P0–P3 numa máquina com Cursor e devolve os
       relatórios/entregas de cada POC.

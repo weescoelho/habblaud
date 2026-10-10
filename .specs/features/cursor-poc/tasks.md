@@ -10,7 +10,7 @@ Implement these tasks with the `tlc-spec-driven` skill: **activate it by name an
 
 **Design**: `.specs/features/cursor-poc/design.md`
 **Spec**: `.specs/features/cursor-poc/spec.md`
-**Status**: Draft
+**Status**: Complete
 
 ---
 
@@ -623,12 +623,13 @@ T17 → T18
 
 **Done when**:
 
-- [ ] Passo a passo: instalar hooks do harness, coletar eventos, gerar matriz (P1), inspecionar transcript (P0), instalar hook real e medir bloqueio (P2) e validar a ingest no escritório (P3)
-- [ ] Cada POC tem o comando exato, a evidência esperada e o critério de sucesso/falha
-- [ ] Gate check passes: `npm run typecheck`
+- [x] Passo a passo: instalar hooks do harness, coletar eventos, gerar matriz (P1), inspecionar transcript (P0), instalar hook real e medir bloqueio (P2) e validar a ingest no escritório (P3)
+- [x] Cada POC tem o comando exato, a evidência esperada e o critério de sucesso/falha
+- [x] Gate check passes: `npm run typecheck`
 
 **Tests**: none
 **Gate**: build
+**Status**: ✅ Done
 
 **Commit**: `docs(cursor): runbook das POCs P0-P3`
 
