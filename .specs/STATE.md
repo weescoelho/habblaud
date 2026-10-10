@@ -13,10 +13,10 @@
 ## Handoff
 
 - **Feature**: `cursor-poc` (`.specs/features/cursor-poc/`) — POCs P0–P3 (transcript, cobertura de hooks, bloqueio de decisão e ingestão no escritório)
-- **Phase / Task**: Execute concluído — T1–T18 ✅; validação independente PASS; runbook entregue. Aguardando revisão do usuário antes de P4–P8.
-- **Completed**: 18/18 tasks (T1–T18) commitadas; Fix 1 (`2e7cf02`) fechou a lacuna de CPOC-08 (rota `{ok:false}` para evento desconhecido); Verifier independente PASS (`validation.md`: 29/29 ACs, 12/13 mutações killed, M11 equivalente; gate 1224 passed / 2 skipped); `validate_state.py` exit 0.
+- **Phase / Task**: Execute concluído — T1–T18 ✅; validação independente PASS; runbook entregue; **validação ao vivo (P0–P3) concluída** na IDE do Cursor (relatório `docs/relatorio-poc-cursor-2026-10-10.md`, no repo-pai). Decisão **GO** para a Fase 1. Parado antes de P4–P8 (aguardando decisão do usuário).
+- **Completed**: 18/18 tasks (T1–T18) commitadas; Fix 1 (`2e7cf02`) fechou a lacuna de CPOC-08 (rota `{ok:false}` para evento desconhecido); Verifier independente PASS (`validation.md`: 29/29 ACs, 12/13 mutações killed, M11 equivalente; gate 1224 passed / 2 skipped); `validate_state.py` exit 0; **POC ao vivo**: P1 ✅ (15 eventos na IDE), P3 ✅ (agente `cursor` no escritório, sem regressão no Codex), P2 ✅ (`allow`/`deny` nativos; bloqueio ~20 s; config 35 s), P0 🟡 parcial (transcript JSONL legível; tool-calls por mapear — C1).
 - **In-progress** (file:line): nada — working tree limpo na branch `cursor-poc`.
-- **Next step**: revisão do usuário do relatório de verificação (`.specs/features/cursor-poc/validation.md`) e do runbook (`docs/analise/08-runbook-poc-cursor.md`); executar as POCs ao vivo com o runbook numa máquina com Cursor; depois decidir P4–P8. PR upstream só com go-ahead explícito.
-- **Blockers**: a validação ao vivo (P0/P1/P2/P3 na IDE do Cursor) depende de uma máquina com assinatura Cursor — pendente, a executar pelo runbook.
+- **Next step**: decidir P4–P8 (a Fase 1 tem **GO**); fechar as pendências de C1 (tool-calls do transcript) e do critério de ≥30 s do P2. PR upstream só com go-ahead explícito.
+- **Blockers**: C1 🟡 parcial (tool-calls do transcript por mapear) e P2 ≥30 s por medir — **não bloqueiam** a Fase 1 (modo "hooks-only").
 - **Uncommitted files**: none (`.specs/` do fork versionado; `docs/analise/08-runbook-poc-cursor.md` commitado dentro do fork).
 - **Branch**: `cursor-poc` (enviado para `origin/cursor-poc`). Remotes: `origin` = fork `weescoelho/habblaud`; `upstream` = `marmottajr/habblaud`.
