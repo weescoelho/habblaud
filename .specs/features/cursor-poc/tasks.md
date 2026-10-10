@@ -253,14 +253,15 @@ T17 → T18
 
 **Done when**:
 
-- [ ] `parseCursorEvent` aceita só `{ event: { hook_event_name: string } }`; `{}`, `{event:'x'}`, `{event:{}}` e `[]` lançam `HttpError(400)`
-- [ ] `handleCursorEvent` chama `live.applyHookEvent(event)` e responde `200 {ok}`; sem `live` responde `200 {ok:false}`; `try/catch` → `{ok:false}` (nunca 500)
-- [ ] `server/cursor/http.test.ts` cobre os dois caminhos com uma `CursorLive` falsa (parse, `{ok:true}`, `{ok:false}` sem fonte e fonte que lança)
-- [ ] Gate check passes: `npx vitest run server/cursor`
-- [ ] Test count: 4+ casos passam (sem deleções silenciosas)
+- [x] `parseCursorEvent` aceita só `{ event: { hook_event_name: string } }`; `{}`, `{event:'x'}`, `{event:{}}` e `[]` lançam `HttpError(400)`
+- [x] `handleCursorEvent` chama `live.applyHookEvent(event)` e responde `200 {ok}`; sem `live` responde `200 {ok:false}`; `try/catch` → `{ok:false}` (nunca 500)
+- [x] `server/cursor/http.test.ts` cobre os dois caminhos com uma `CursorLive` falsa (parse, `{ok:true}`, `{ok:false}` sem fonte e fonte que lança)
+- [x] Gate check passes: `npx vitest run server/cursor`
+- [x] Test count: 4+ casos passam (sem deleções silenciosas)
 
 **Tests**: integration
 **Gate**: full
+**Status**: ✅ Done
 
 **Commit**: `feat(cursor): criar parse e manuseio da rota de eventos`
 
