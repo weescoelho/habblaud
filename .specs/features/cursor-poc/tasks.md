@@ -342,15 +342,17 @@ T17 → T18
 
 **Done when**:
 
-- [ ] `classifyTranscript(path)` devolve `'json' | 'jsonl' | 'sqlite' | 'opaco'` (sniff dos primeiros bytes; SQLite por `SQLite format 3\0`)
-- [ ] `inspectTranscript(path)` lista chaves/contagens (json/jsonl) ou tabelas+contagens (`node:sqlite`), sem lançar em formato opaco
-- [ ] `parseCursorTranscriptLine(line)` mapeia linha reconhecida para `{ activities, role? }` (com `kind` e `label`); linha desconhecida → vazio, sem lançar
-- [ ] `server/sources/cursor/transcript.test.ts` cobre classificação dos 4 formatos, contagens/roles de JSONL, tabelas de um SQLite sintético, linha de fixture → `Activity` e linha desconhecida sem exceção
-- [ ] Gate check passes: `npx vitest run server/sources/cursor`
-- [ ] Test count: 8+ casos passam (sem deleções silenciosas)
+- [x] `classifyTranscript(path)` devolve `'json' | 'jsonl' | 'sqlite' | 'opaco'` (sniff dos primeiros bytes; SQLite por `SQLite format 3\0`)
+- [x] `inspectTranscript(path)` lista chaves/contagens (json/jsonl) ou tabelas+contagens (`node:sqlite`), sem lançar em formato opaco
+- [x] `parseCursorTranscriptLine(line)` mapeia linha reconhecida para `{ activities, role? }` (com `kind` e `label`); linha desconhecida → vazio, sem lançar
+- [x] `server/sources/cursor/transcript.test.ts` cobre classificação dos 4 formatos, contagens/roles de JSONL, tabelas de um SQLite sintético, linha de fixture → `Activity` e linha desconhecida sem exceção
+- [x] Gate check passes: `npx vitest run server/sources/cursor`
+- [x] Test count: 8+ casos passam (sem deleções silenciosas)
 
 **Tests**: unit
 **Gate**: quick
+
+**Status**: ✅ Done
 
 **Commit**: `feat(cursor): esqueleto de parser e inspetor do transcript`
 
