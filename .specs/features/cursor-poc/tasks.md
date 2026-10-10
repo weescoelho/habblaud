@@ -501,16 +501,18 @@ T17 → T18
 
 **Done when**:
 
-- [ ] Evento de observação → `POST /api/cursor/events`, nada no stdout, sai `0`
-- [ ] `beforeShellExecution`/`beforeMCPExecution`/`beforeReadFile`/`preToolUse` → registra com `provider:'cursor'` e espera; `allow`/`deny` → `{"permission":"allow"|"deny"}` (+ `user_message` no deny) no stdout e saída `0`
-- [ ] Tempo esgotado ou Habblaud fora do ar → sai `0` sem imprimir decisão; stdin inválido → sai `0` sem escrever
-- [ ] Nenhuma exceção não tratada (rede de segurança de saída `0`)
-- [ ] `server/test/cursor-hook.test.ts` (novo) e a extensão de `server/test/permission-server.ts` (`cursor: true`) cobrem observação, allow, deny, tempo esgotado, fonte fora do ar e stdin inválido, rodando o hook como processo
-- [ ] Gate check passes: `npm test`
-- [ ] Test count: 8+ casos passam (sem deleções silenciosas)
+- [x] Evento de observação → `POST /api/cursor/events`, nada no stdout, sai `0`
+- [x] `beforeShellExecution`/`beforeMCPExecution`/`beforeReadFile`/`preToolUse` → registra com `provider:'cursor'` e espera; `allow`/`deny` → `{"permission":"allow"|"deny"}` (+ `user_message` no deny) no stdout e saída `0`
+- [x] Tempo esgotado ou Habblaud fora do ar → sai `0` sem imprimir decisão; stdin inválido → sai `0` sem escrever
+- [x] Nenhuma exceção não tratada (rede de segurança de saída `0`)
+- [x] `server/test/cursor-hook.test.ts` (novo) e a extensão de `server/test/permission-server.ts` (`cursor: true`) cobrem observação, allow, deny, tempo esgotado, fonte fora do ar e stdin inválido, rodando o hook como processo
+- [x] Gate check passes: `npm test`
+- [x] Test count: 8+ casos passam (sem deleções silenciosas)
 
 **Tests**: integration
 **Gate**: full
+
+**Status**: ✅ Done
 
 **Commit**: `feat(cursor): hook de decisão e observação`
 
