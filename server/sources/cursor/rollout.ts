@@ -85,9 +85,13 @@ export function parseCursorEvent(input: Record<string, unknown>): CursorEvent | 
 }
 
 /**
- * Traduz uma ferramenta do Cursor em uma Activity a partir do nome que ela tem no hook. `Shell` vira um comando de
- * shell (`describeCommand`); as ferramentas conhecidas passam por `describeTool`; `MCP:<tool>` vira o nome no formato
- * `mcp__<tool>`. `tool` volta normalizado para o `Activity.tool`.
+ * Traduz uma ferramenta do Cursor em uma Activity. `Shell` vira um comando de shell (`describeCommand`); as
+ * ferramentas conhecidas passam por `describeTool`; `MCP:<tool>` vira o nome no formato `mcp__<tool>`. `tool`
+ * volta normalizado para o `Activity.tool`.
+ *
+ * Cobre tanto os nomes do HOOK (`Shell`, `MCP:<tool>`) quanto os do TRANSCRIPT (P0/C1, 2026-10-10), que usa
+ * nomes próprios: `StrReplace` (edição), `CallDynamicTool` (MCP dinâmico, com `namespace`/`toolName`) e `Glob`
+ * com `glob_pattern` (o canonical do `describeTool` é `pattern`).
  */
 export function describeCursorTool(rawName: string, input: Rec): { desc: ActivityDescription; tool: string } {
   if (rawName === 'Shell') {
@@ -97,6 +101,19 @@ export function describeCursorTool(rawName: string, input: Rec): { desc: Activit
   if (rawName.startsWith('MCP:')) {
     const tool = `mcp__${rawName.slice(4)}`;
     return { desc: describeTool(tool, input), tool };
+  }
+  if (rawName === 'CallDynamicTool') {
+    const ns = firstStr(input.namespace);
+    const tool = firstStr(input.toolName);
+    const name = tool ? `mcp__${ns ? `${ns}__` : ''}${tool}` : rawName;
+    return { desc: describeTool(name, firstRec(input.arguments) ?? input), tool: name };
+  }
+  if (rawName === 'StrReplace') {
+    return { desc: describeTool('Edit', input), tool: rawName };
+  }
+  if (rawName === 'Glob') {
+    // O transcript do Cursor manda `glob_pattern` (o canonical do `describeTool` é `pattern`).
+    return { desc: describeTool('Glob', { ...input, pattern: firstStr(input.pattern, input.glob_pattern) ?? '' }), tool: rawName };
   }
   return { desc: describeTool(rawName, input), tool: rawName };
 }

@@ -38,6 +38,16 @@ const JSONL = [
   '{"role":"tool","content":"resultado"}',
 ].join('\n');
 
+// Formato REAL observado no transcript do Cursor (P0/C1, 2026-10-10): a mensagem vem aninhada em
+// `message.content` (com blocos `text` e `tool_use`) e os marcadores de turno são `{type:"turn_ended"}`.
+const CURSOR_JSONL = [
+  '{"role":"user","message":{"content":[{"type":"text","text":"rode npm test"}]}}',
+  '{"role":"assistant","message":{"content":[{"type":"tool_use","name":"Shell","input":{"command":"npm test","description":"Rodar os testes"}}]}}',
+  '{"role":"assistant","message":{"content":[{"type":"tool_use","name":"StrReplace","input":{"path":"/p/a.ts","old_string":"a","new_string":"b"}}]}}',
+  '{"role":"assistant","message":{"content":[{"type":"tool_use","name":"CallDynamicTool","input":{"namespace":"cursor","toolName":"list_repositories"}}]}}',
+  '{"type":"turn_ended","status":"success"}',
+].join('\n');
+
 describe('classifyTranscript', () => {
   it('classifica um objeto JSON único como json', () => {
     expect(classifyTranscript(write('a.json', JSON.stringify({ role: 'user', content: 'oi' }, null, 2)))).toBe('json');
@@ -104,6 +114,16 @@ describe('inspectTranscript', () => {
     expect(r.tables).toEqual([]);
     expect(r.keys).toEqual([]);
   });
+
+  it('JSONL do Cursor real (message.content): detecta tool-calls mesmo aninhados na mensagem', () => {
+    const r = inspectTranscript(write('cursor.jsonl', `${CURSOR_JSONL}\n`));
+    expect(r.format).toBe('jsonl');
+    expect(r.lines).toBe(5);
+    expect(r.roles).toEqual(['user', 'assistant']);
+    expect(r.hasToolCalls).toBe(true); // antes do fix (C1) isto vinha `false`
+    expect(r.keys).toContainEqual({ key: 'message', count: 4 });
+    expect(r.keys).toContainEqual({ key: 'type', count: 1 });
+  });
 });
 
 describe('parseCursorTranscriptLine', () => {
@@ -127,5 +147,23 @@ describe('parseCursorTranscriptLine', () => {
 
   it('linha que não é JSON devolve vazio, sem lançar', () => {
     expect(parseCursorTranscriptLine('não é json')).toEqual({ activities: [] });
+  });
+
+  it('linha real do Cursor (message.content): tool_use vira Activity nomeada', () => {
+    const r = parseCursorTranscriptLine('{"role":"assistant","message":{"content":[{"type":"tool_use","name":"Shell","input":{"command":"npm test"}}]}}');
+    expect(r.role).toBe('assistant');
+    expect(r.activities).toHaveLength(1);
+    expect(r.activities[0]).toMatchObject({ kind: 'test', label: 'Rodando testes', tool: 'Bash' });
+  });
+
+  it('bloco de texto dentro de message.content não vira Activity', () => {
+    expect(parseCursorTranscriptLine('{"role":"user","message":{"content":[{"type":"text","text":"oi"}]}}')).toEqual({
+      role: 'user',
+      activities: [],
+    });
+  });
+
+  it('marcador de turno do Cursor (sem role/tool) devolve vazio', () => {
+    expect(parseCursorTranscriptLine('{"type":"turn_ended","status":"success"}')).toEqual({ activities: [] });
   });
 });

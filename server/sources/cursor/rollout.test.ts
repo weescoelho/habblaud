@@ -95,6 +95,28 @@ describe('describeCursorTool', () => {
     expect(describeCursorTool('MCP:foo_bar', {}).tool).toBe('mcp__foo_bar');
   });
 
+  it('StrReplace (transcript) → describeTool Edit, mantendo o nome cru', () => {
+    const input = { path: '/p/a.ts', old_string: 'a', new_string: 'b' };
+    expect(describeCursorTool('StrReplace', input)).toEqual({ desc: describeTool('Edit', input), tool: 'StrReplace' });
+  });
+
+  it('Glob do transcript usa glob_pattern (aliases) e cita o padrão', () => {
+    const { desc, tool } = describeCursorTool('Glob', { glob_pattern: '**/*.ts' });
+    expect(tool).toBe('Glob');
+    expect(desc.kind).toBe('search');
+    expect(desc.text).toContain('**/*.ts');
+  });
+
+  it('CallDynamicTool (transcript) → mcp__<namespace>__<toolName>', () => {
+    const r = describeCursorTool('CallDynamicTool', { namespace: 'cursor', toolName: 'list_repositories', arguments: { limit: 10 } });
+    expect(r.tool).toBe('mcp__cursor__list_repositories');
+    expect(r.desc.kind).toBe('mcp');
+  });
+
+  it('glob_pattern não sobrescreve um pattern explícito', () => {
+    expect(describeCursorTool('Glob', { pattern: 'a.ts', glob_pattern: 'b.ts' }).desc.detail).toBe('a.ts');
+  });
+
   it('ferramenta desconhecida passa pelo describeTool', () => {
     expect(describeCursorTool('Magic', {})).toEqual({ desc: describeTool('Magic', {}), tool: 'Magic' });
   });

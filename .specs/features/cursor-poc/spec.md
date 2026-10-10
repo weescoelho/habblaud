@@ -27,7 +27,7 @@ Explicitly excluded. Documented to prevent scope creep.
 | P4–P8 (subagentes avançados, CLI `cursor-agent`, mensagens, histórico, uso do plano) | Fase seguinte (`07-poc-priorizados.md`); só após P0–P3 confirmadas        |
 | Paridade visual completa e cartão de uso no cliente                 | Depende de dados que só o P0/P8 podem confirmar; cliente fica intacto     |
 | Publicar/push no fork ou abrir PR upstream                          | Ação remota: exige go-ahead explícito (blast radius)                      |
-| Transcript parser "completo" do Cursor                              | O schema real é desconhecido (lacuna C1); aqui só o esqueleto + heurística |
+| Transcript parser "completo" do Cursor                              | A P0 mapeou o schema em 2026-10-10 (C1 ✅); a paridade total (terminal/tarefas/tokens/histórico) fica para a Fase 1 |
 | Alterar a UI (`client/`) além do que já é dirigido por `provider`   | Reuso máximo; sem decisão de produto nova                                 |
 | "Sempre permitir"/perguntas (`AskUserQuestion`) no Cursor           | Sem superfície documentada; P2 só cobre allow/deny + motivo               |
 

@@ -1,12 +1,12 @@
-// Esqueleto do parser/inspetor do transcript do Cursor (POC P0). O schema do arquivo ainda não está
-// confirmado (lacuna C1), então caracterizamos o formato (json/jsonl/sqlite/opaco) e mapeamos linhas
-// reconhecidas para atividades legíveis lendo ALIASES DEFENSIVOS (estilo Anthropic e estilo OpenAI
-// de tool-call). Tudo pelo próprio Node (`node:fs`/`node:sqlite`) e SEM lançar para formato
-// desconhecido: o harness precisa reportar "opaco" sem quebrar.
+// Parser/inspetor do transcript do Cursor (POC P0). O schema foi mapeado ao vivo (lacuna C1, 2026-10-10):
+// o arquivo é JSONL com `{"role":…,"message":{"content":[{"type":"text"|"tool_use","name","input"}]}}` e
+// marcadores de turno `{"type":"turn_ended","status":…}`. Ainda assim lemos ALIASES DEFENSIVOS (estilo
+// Anthropic/OpenAI no topo OU aninhados em `message.content`). Tudo pelo próprio Node
+// (`node:fs`/`node:sqlite`) e SEM lançar para formato desconhecido: o harness precisa reportar "opaco" sem quebrar.
 import { closeSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
-import { describeTool } from '../../../shared/activity';
 import type { ActivityKind } from '../../../shared/types';
+import { describeCursorTool } from './rollout';
 
 /** Formato caracterizado do arquivo apontado por um `transcript_path`. */
 export type TranscriptFormat = 'json' | 'jsonl' | 'sqlite' | 'opaco';
@@ -119,11 +119,11 @@ interface ToolBlock {
 }
 
 /**
- * Extrai os blocos de ferramenta de uma entrada, cobrindo os dois estilos conhecidos:
+ * Extrai os blocos de ferramenta de UM contêiner de mensagem, cobrindo os dois estilos conhecidos:
  * estilo OpenAI/Cursor (`tool_calls: [{ function: { name, arguments } }]`) e estilo Anthropic
  * (`content: [{ type: 'tool_use', name, input }]`). Campos ausentes/inesperados são ignorados.
  */
-function toolBlocks(rec: Rec): ToolBlock[] {
+function blocksOf(rec: Rec): ToolBlock[] {
   const out: ToolBlock[] = [];
   if (Array.isArray(rec.tool_calls)) {
     for (const item of rec.tool_calls) {
@@ -147,10 +147,22 @@ function toolBlocks(rec: Rec): ToolBlock[] {
   return out;
 }
 
-/** Traduz um bloco de ferramenta numa atividade legível (reusa `describeTool`). */
+/**
+ * Extrai os blocos de ferramenta de uma linha. O contêiner pode ser a própria linha (estilo
+ * Anthropic/OpenAI de topo) ou o objeto `message` — o formato observado no transcript real do
+ * Cursor (P0/C1, 2026-10-10): `{"role":…,"message":{"content":[{"type":"tool_use","name":"Shell","input":{…}}]}}`.
+ */
+function toolBlocks(rec: Rec): ToolBlock[] {
+  const out = blocksOf(rec);
+  const msg = recOf(rec.message);
+  if (msg) out.push(...blocksOf(msg));
+  return out;
+}
+
+/** Traduz um bloco de ferramenta numa atividade legível (reusa `describeCursorTool`). */
 function toActivity(block: ToolBlock): TranscriptActivity {
-  const desc = describeTool(block.name, block.input);
-  return { kind: desc.kind, label: desc.text, tool: block.name, ...(desc.detail ? { detail: desc.detail } : {}) };
+  const { desc, tool } = describeCursorTool(block.name, block.input);
+  return { kind: desc.kind, label: desc.text, tool, ...(desc.detail ? { detail: desc.detail } : {}) };
 }
 
 function sortedKeys(counts: Map<string, number>): KeyCount[] {

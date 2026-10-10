@@ -146,21 +146,21 @@ rótulo do provedor.
 - **Location**: `server/sources/cursor/rollout.ts`
 - **Interfaces**:
   - `parseCursorEvent(input: Record<string, unknown>): CursorEvent | undefined` — normaliza `hook_event_name`, `conversation_id`, `workspace_roots[0]`, `cwd`, `tool_name`, `tool_input`, `command`, `transcript_path`.
-  - `describeCursorTool(rawName: string, input: Rec): { desc: ActivityDescription; tool: string }` — espelha `describeCodexTool` (`codex/rollout.ts:304`): `Shell`→`describeCommand(command)`; `Read`/`Write`/`Grep`/`Glob`/`Task`/`WebSearch`/`MCP:<tool>` → `describeTool`.
+  - `describeCursorTool(rawName: string, input: Rec): { desc: ActivityDescription; tool: string }` — espelha `describeCodexTool` (`codex/rollout.ts:304`): `Shell`→`describeCommand(command)`; `Read`/`Write`/`Grep`/`Glob`/`Task`/`WebSearch`/`MCP:<tool>` → `describeTool`. Cobre também os nomes próprios do **transcript** (P0/C1): `StrReplace`→`Edit`, `CallDynamicTool`→`mcp__<namespace>__<toolName>`, `Glob` com `glob_pattern`.
   - `statusBorder(event: string): { status: AgentStatus; waitingFor?: string } | undefined` — o mapa hook→status (`06` §6.3).
 - **Dependencies**: `shared/activity.ts`, `shared/types.ts`
 - **Reuses**: `describeCodexTool` como molde; `mcpName` (`codex/rollout.ts:244`) para `MCP:<tool>` → `mcp__<tool>`
 
-### `sources/cursor/transcript.ts` (esqueleto P0)
+### `sources/cursor/transcript.ts` (parser P0; schema confirmado em C1)
 
-- **Purpose**: esqueleto de parser do transcript do Cursor e inspetor de formato usável pelo harness.
+- **Purpose**: parser do transcript do Cursor e inspetor de formato usável pelo harness.
 - **Location**: `server/sources/cursor/transcript.ts`
 - **Interfaces**:
   - `classifyTranscript(path: string): 'json' | 'jsonl' | 'sqlite' | 'opaco'` — sniff pelos primeiros bytes (`{` = json, `SQLite format 3\0` = sqlite, várias linhas JSON = jsonl).
-  - `inspectTranscript(path: string): TranscriptInspection` — chaves/campos com contagem (json/jsonl) ou tabelas+contagens (`node:sqlite`), sem binário externo.
+  - `inspectTranscript(path: string): TranscriptInspection` — chaves/campos com contagem (json/jsonl) ou tabelas+contagens (`node:sqlite`), sem binário externo; `hasToolCalls` considera a linha OU o `message` aninhado.
   - `parseCursorTranscriptLine(line: string): { activities: Activity[]; role?: string }` — mapeia linhas reconhecidas; **nunca lança** para formatos desconhecidos (retorna vazio).
-- **Dependencies**: `node:fs`, `node:sqlite` (disponível no Node 24), `shared/activity.ts`
-- **Reuses**: `describeTool`; a classificação alimenta `scripts/cursor-poc.ts transcript`
+- **Dependencies**: `node:fs`, `node:sqlite` (disponível no Node 24), `sources/cursor/rollout.ts` (`describeCursorTool`)/`shared/activity.ts`
+- **Reuses**: `describeCursorTool` (nomes do transcript); a classificação alimenta `scripts/cursor-poc.ts transcript`
 
 ### `server/cursor/http.ts`
 
