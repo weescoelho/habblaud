@@ -172,41 +172,41 @@ Each requirement gets a unique ID for tracking across design, tasks, and validat
 
 | Requirement ID | Story       | Phase  | Status  |
 | -------------- | ----------- | ------ | ------- |
-| CPOC-01        | P1: Ingest  | Design | Implementing |
-| CPOC-02        | P1: Ingest  | Design | Implementing |
-| CPOC-03        | P1: Ingest  | Design | Implementing |
-| CPOC-04        | P1: Ingest  | Design | Implementing |
-| CPOC-05        | P1: Ingest  | Design | Implementing |
-| CPOC-06        | P1: Ingest  | Design | Implementing |
-| CPOC-07        | P1: Ingest  | Design | Implementing |
-| CPOC-08        | P1: Ingest  | Design | Implementing |
-| CPOC-09        | P1: Ingest  | Design | Implementing |
-| CPOC-10        | P1: Ingest  | Design | Implementing |
-| CPOC-11        | P2: Hooks   | Design | Implementing |
-| CPOC-12        | P2: Hooks   | Design | Implementing |
-| CPOC-13        | P2: Hooks   | Design | Implementing |
-| CPOC-14        | P2: Hooks   | Design | Implementing |
-| CPOC-15        | P2: Hooks   | Design | Implementing |
-| CPOC-16        | P2: Hooks   | Design | Implementing |
-| CPOC-17        | P2: Transcript | Design | Implementing |
-| CPOC-18        | P2: Transcript | Design | Implementing |
-| CPOC-19        | P2: Transcript | Design | Implementing |
-| CPOC-20        | P2: Transcript | Design | Implementing |
-| CPOC-21        | P2: Transcript | Design | Implementing |
-| CPOC-22        | P2: Transcript | Design | Implementing |
-| CPOC-23        | P2: Transcript | Design | Implementing |
-| CPOC-24        | P3: Decision | Design | Implementing |
-| CPOC-25        | P3: Decision | Design | Implementing |
-| CPOC-26        | P3: Decision | Design | Implementing |
-| CPOC-27        | P3: Decision | Design | Implementing |
-| CPOC-28        | P3: Decision | Design | Implementing |
-| CPOC-29        | P3: Decision | Design | Implementing |
+| CPOC-01        | P1: Ingest  | Design | ✅ Verified |
+| CPOC-02        | P1: Ingest  | Design | ✅ Verified |
+| CPOC-03        | P1: Ingest  | Design | ✅ Verified |
+| CPOC-04        | P1: Ingest  | Design | ✅ Verified |
+| CPOC-05        | P1: Ingest  | Design | ✅ Verified |
+| CPOC-06        | P1: Ingest  | Design | ✅ Verified |
+| CPOC-07        | P1: Ingest  | Design | ✅ Verified |
+| CPOC-08        | P1: Ingest  | Design | ✅ Verified |
+| CPOC-09        | P1: Ingest  | Design | ✅ Verified |
+| CPOC-10        | P1: Ingest  | Design | ✅ Verified |
+| CPOC-11        | P2: Hooks   | Design | ✅ Verified |
+| CPOC-12        | P2: Hooks   | Design | ✅ Verified |
+| CPOC-13        | P2: Hooks   | Design | ✅ Verified |
+| CPOC-14        | P2: Hooks   | Design | ✅ Verified |
+| CPOC-15        | P2: Hooks   | Design | ✅ Verified |
+| CPOC-16        | P2: Hooks   | Design | ✅ Verified |
+| CPOC-17        | P2: Transcript | Design | ✅ Verified |
+| CPOC-18        | P2: Transcript | Design | ✅ Verified |
+| CPOC-19        | P2: Transcript | Design | ✅ Verified |
+| CPOC-20        | P2: Transcript | Design | ✅ Verified |
+| CPOC-21        | P2: Transcript | Design | ✅ Verified |
+| CPOC-22        | P2: Transcript | Design | ✅ Verified |
+| CPOC-23        | P2: Transcript | Design | ✅ Verified |
+| CPOC-24        | P3: Decision | Design | ✅ Verified |
+| CPOC-25        | P3: Decision | Design | ✅ Verified |
+| CPOC-26        | P3: Decision | Design | ✅ Verified |
+| CPOC-27        | P3: Decision | Design | ✅ Verified |
+| CPOC-28        | P3: Decision | Design | ✅ Verified |
+| CPOC-29        | P3: Decision | Design | ✅ Verified |
 
 **ID format:** `[CATEGORY]-[NUMBER]` (e.g., `AUTH-01`, `CART-03`, `NOTIF-02`)
 
 **Status values:** Pending → In Design → In Tasks → Implementing → Verified
 
-**Coverage:** 29 total, 0 mapped to tasks, 29 unmapped ⚠️
+**Coverage:** 29 total, 29 mapped to tasks, 0 unmapped ✅ (verificado em `validation.md`)
 
 ---
 
