@@ -437,15 +437,17 @@ T17 → T18
 
 **Done when**:
 
-- [ ] `install` grava/mergeia os hooks do harness em `~/.cursor/hooks.json` (ou `<projeto>/.cursor/hooks.json` com `--project`), preserva os hooks existentes e faz backup do arquivo anterior; `hooks.json` ausente → cria `{"version":1,"hooks":{}}`; rodar 2× é idempotente
-- [ ] `uninstall` remove só os hooks do harness, preservando os demais
-- [ ] `report` lê o diretório de captura e imprime a matriz Markdown "evento → dispara? (contagem) → campos"; diretório vazio → mensagem explicativa e código `0`
-- [ ] `server/test/cursor-poc.test.ts` cobre install (criação/merge/backup/idempotência), uninstall e report (matriz + diretório vazio), com HOME falso
-- [ ] Gate check passes: `npm test`
-- [ ] Test count: 8+ casos passam (sem deleções silenciosas)
+- [x] `install` grava/mergeia os hooks do harness em `~/.cursor/hooks.json` (ou `<projeto>/.cursor/hooks.json` com `--project`), preserva os hooks existentes e faz backup do arquivo anterior; `hooks.json` ausente → cria `{"version":1,"hooks":{}}`; rodar 2× é idempotente
+- [x] `uninstall` remove só os hooks do harness, preservando os demais
+- [x] `report` lê o diretório de captura e imprime a matriz Markdown "evento → dispara? (contagem) → campos"; diretório vazio → mensagem explicativa e código `0`
+- [x] `server/test/cursor-poc.test.ts` cobre install (criação/merge/backup/idempotência), uninstall e report (matriz + diretório vazio), com HOME falso
+- [x] Gate check passes: `npm test`
+- [x] Test count: 8+ casos passam (sem deleções silenciosas)
 
 **Tests**: integration
 **Gate**: full
+
+**Status**: ✅ Done
 
 **Commit**: `feat(cursor): install/uninstall/report do harness de hooks`
 

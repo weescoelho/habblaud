@@ -2,7 +2,7 @@
 // processo (tsx) sobre fixtures SINTÉTICAS e confere a saída e o código, como o harness será usado:
 // classificação + chaves/contagens (json/jsonl), tabelas+contagens (SQLite) e o caminho inexistente.
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -13,12 +13,12 @@ const HOOK = resolve(__dirname, '../../mod/habblaud-cursor/poc-hook.mjs');
 const ROOT = resolve(__dirname, '../..');
 
 /** Roda o harness como o usuário rodaria: `node --import tsx scripts/cursor-poc.ts <args>`. */
-function cli(args: string[]) {
+function cli(args: string[], env: NodeJS.ProcessEnv = {}) {
   return spawnSync(process.execPath, ['--import', 'tsx', SCRIPT, ...args], {
     encoding: 'utf8',
     timeout: 30_000,
     cwd: ROOT,
-    env: process.env,
+    env: { ...process.env, ...env },
   });
 }
 
@@ -172,5 +172,102 @@ describe('cursor-poc poc-hook.mjs (captura)', () => {
     expect(r.status).toBe(0);
     expect(existsSync(join(dir, 'events.jsonl'))).toBe(true);
     expect(existsSync(join(home, '.habblaud', 'cursor-poc', 'events.jsonl'))).toBe(false);
+  });
+});
+
+const isHarnessCommand = (e: { command?: unknown }) => typeof e.command === 'string' && /poc-hook\.mjs/.test(e.command);
+const ourEntries = (file: { hooks?: Record<string, Array<{ command?: unknown }>> }) =>
+  Object.values(file.hooks ?? {}).flat().filter(isHarnessCommand);
+
+describe('cursor-poc install/uninstall/report', () => {
+  it('install: hooks.json ausente → cria com version 1 e os hooks do harness em cada evento', () => {
+    const home = join(tmp.dir, 'home');
+    const r = cli(['install'], { HOME: home });
+    expect(r.status).toBe(0);
+    const saved = JSON.parse(readFileSync(join(home, '.cursor', 'hooks.json'), 'utf8')) as { version?: unknown; hooks?: Record<string, Array<{ command?: unknown }>> };
+    expect(saved.version).toBe(1);
+    const names = Object.keys(saved.hooks ?? {});
+    expect(names).toContain('preToolUse');
+    expect(names).toContain('sessionStart');
+    expect(names.every((n) => saved.hooks![n].every((e) => typeof e.command === 'string'))).toBe(true);
+    expect(ourEntries(saved).length).toBe(names.length); // um hook do harness por evento
+  });
+
+  it('install: mergeia preservando hooks alheios, faz backup do original e é idempotente', () => {
+    const home = join(tmp.dir, 'home');
+    const dir = join(home, '.cursor');
+    mkdirSync(dir, { recursive: true });
+    const other = { version: 1, hooks: { preToolUse: [{ command: 'outro-hook' }] } };
+    writeFileSync(join(dir, 'hooks.json'), `${JSON.stringify(other, null, 2)}\n`);
+
+    const r1 = cli(['install'], { HOME: home });
+    expect(r1.status).toBe(0);
+    const file = join(dir, 'hooks.json');
+    const saved = JSON.parse(readFileSync(file, 'utf8')) as { hooks: Record<string, Array<{ command: string }>> };
+    expect(saved.hooks.preToolUse[0]).toEqual({ command: 'outro-hook' }); // o hook alheio fica
+    expect(saved.hooks.preToolUse.some(isHarnessCommand)).toBe(true); // e o nosso entra
+    expect(saved.hooks.sessionStart.some(isHarnessCommand)).toBe(true);
+
+    const backups = readdirSync(dir).filter((f) => f.includes('backup'));
+    expect(backups).toHaveLength(1);
+    expect(JSON.parse(readFileSync(join(dir, backups[0]), 'utf8'))).toEqual(other);
+
+    const before = readFileSync(file, 'utf8');
+    const r2 = cli(['install'], { HOME: home });
+    expect(r2.status).toBe(0);
+    expect(readFileSync(file, 'utf8')).toBe(before); // nada muda
+    expect(readdirSync(dir).filter((f) => f.includes('backup'))).toHaveLength(1); // nem backup novo
+  });
+
+  it('install --project <dir>: grava em <dir>/.cursor/hooks.json', () => {
+    const proj = join(tmp.dir, 'projeto');
+    mkdirSync(proj, { recursive: true });
+    const r = cli(['install', '--project', proj]);
+    expect(r.status).toBe(0);
+    const saved = JSON.parse(readFileSync(join(proj, '.cursor', 'hooks.json'), 'utf8')) as { hooks?: Record<string, unknown[]> };
+    expect(Object.keys(saved.hooks ?? {}).length).toBeGreaterThan(0);
+  });
+
+  it('uninstall: remove só os hooks do harness, preservando os demais', () => {
+    const home = join(tmp.dir, 'home');
+    const dir = join(home, '.cursor');
+    mkdirSync(dir, { recursive: true });
+    const other = { version: 1, hooks: { preToolUse: [{ command: 'outro-hook' }], stop: [{ command: 'outro-stop' }] } };
+    writeFileSync(join(dir, 'hooks.json'), JSON.stringify(other));
+    expect(cli(['install'], { HOME: home }).status).toBe(0);
+
+    const r = cli(['uninstall'], { HOME: home });
+    expect(r.status).toBe(0);
+    const saved = JSON.parse(readFileSync(join(dir, 'hooks.json'), 'utf8')) as { hooks: Record<string, Array<{ command: string }>> };
+    expect(saved.hooks.preToolUse).toEqual([{ command: 'outro-hook' }]);
+    expect(saved.hooks.stop).toEqual([{ command: 'outro-stop' }]);
+    expect(ourEntries(saved)).toEqual([]);
+  });
+
+  it('report: lê o diretório de captura e imprime a matriz evento → dispara?/contagem/campos', () => {
+    const home = join(tmp.dir, 'home');
+    const dir = join(home, '.habblaud', 'cursor-poc');
+    mkdirSync(dir, { recursive: true });
+    const lines = [
+      { ts: 't1', dir: '/p', event: { hook_event_name: 'preToolUse', cwd: '/p', tool_name: 'Read' } },
+      { ts: 't2', dir: '/p', event: { hook_event_name: 'preToolUse', cwd: '/p', tool_name: 'Grep', conversation_id: 'c1' } },
+      { ts: 't3', dir: '/p', event: { hook_event_name: 'stop', cwd: '/p' } },
+    ].map((l) => JSON.stringify(l));
+    writeFileSync(join(dir, 'events.jsonl'), `${lines.join('\n')}\n`);
+
+    const r = cli(['report'], { HOME: home });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('| Evento | Dispara? | Contagem | Campos |');
+    expect(r.stdout).toMatch(/\| preToolUse \| sim \| 2 \|/);
+    expect(r.stdout).toMatch(/conversation_id/);
+    expect(r.stdout).toMatch(/\| stop \| sim \| 1 \|/);
+    expect(r.stdout).toMatch(/\| sessionStart \| não \| 0 \|/);
+  });
+
+  it('report: diretório de captura vazio → mensagem explicativa e código 0', () => {
+    const home = join(tmp.dir, 'home');
+    const r = cli(['report'], { HOME: home });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/nenhum evento/i);
   });
 });
