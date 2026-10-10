@@ -174,12 +174,12 @@ Each requirement gets a unique ID for tracking across design, tasks, and validat
 | -------------- | ----------- | ------ | ------- |
 | CPOC-01        | P1: Ingest  | Design | Implementing |
 | CPOC-02        | P1: Ingest  | Design | Implementing |
-| CPOC-03        | P1: Ingest  | Design | Pending |
-| CPOC-04        | P1: Ingest  | Design | Pending |
+| CPOC-03        | P1: Ingest  | Design | Implementing |
+| CPOC-04        | P1: Ingest  | Design | Implementing |
 | CPOC-05        | P1: Ingest  | Design | Pending |
 | CPOC-06        | P1: Ingest  | Design | Implementing |
 | CPOC-07        | P1: Ingest  | Design | Implementing |
-| CPOC-08        | P1: Ingest  | Design | Pending |
+| CPOC-08        | P1: Ingest  | Design | Implementing |
 | CPOC-09        | P1: Ingest  | Design | Pending |
 | CPOC-10        | P1: Ingest  | Design | Implementing |
 | CPOC-11        | P2: Hooks   | Design | Pending |

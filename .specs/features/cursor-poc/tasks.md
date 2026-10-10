@@ -221,17 +221,18 @@ T17 → T18
 
 **Done when**:
 
-- [ ] `sessionStart` cria/atualiza o agente (`provider:'cursor'`, `sessionId = conversation_id`) na sala de `workspace_roots[0]` (ou `cwd`/sala padrão); `preToolUse`/`postToolUse`/`postToolUseFailure` registram `Activity` e põem em `working`; `beforeShellExecution`→`shell`; `afterShellExecution`→`working`; `stop`→`idle`; `sessionEnd`→`closeMain`
-- [ ] Evento fora de `HOOK_EVENTS` → `applyHookEvent` devolve `false` sem lançar
-- [ ] Borda fora de ordem não regride o estado (a mais recente vence, por `statusAt`)
-- [ ] Relógio de presença remove o agente quando `now - lastHookAt > STALE_PRESENCE_MS`
-- [ ] `transcriptPathOf()` e `terminalParser()` devolvem `undefined` (MVP sem transcript)
-- [ ] `server/sources/cursor/source.test.ts` cobre a sequência `sessionStart → preToolUse → stop → sessionEnd`, a sala padrão sem `workspace_roots`, evento desconhecido, out-of-order, expiração e a conta registrada; sem regressão do `Office`
-- [ ] Gate check passes: `npm test`
-- [ ] Test count: 10+ casos passam (sem deleções silenciosas)
+- [x] `sessionStart` cria/atualiza o agente (`provider:'cursor'`, `sessionId = conversation_id`) na sala de `workspace_roots[0]` (ou `cwd`/sala padrão); `preToolUse`/`postToolUse`/`postToolUseFailure` registram `Activity` e põem em `working`; `beforeShellExecution`→`shell`; `afterShellExecution`→`working`; `stop`→`idle`; `sessionEnd`→`closeMain`
+- [x] Evento fora de `HOOK_EVENTS` → `applyHookEvent` devolve `false` sem lançar
+- [x] Borda fora de ordem não regride o estado (a mais recente vence, por `statusAt`)
+- [x] Relógio de presença remove o agente quando `now - lastHookAt > STALE_PRESENCE_MS`
+- [x] `transcriptPathOf()` e `terminalParser()` devolvem `undefined` (MVP sem transcript)
+- [x] `server/sources/cursor/source.test.ts` cobre a sequência `sessionStart → preToolUse → stop → sessionEnd`, a sala padrão sem `workspace_roots`, evento desconhecido, out-of-order, expiração e a conta registrada; sem regressão do `Office`
+- [x] Gate check passes: `npm test`
+- [x] Test count: 10+ casos passam (sem deleções silenciosas)
 
 **Tests**: integration
 **Gate**: full
+**Status**: ✅ Done
 
 **Commit**: `feat(cursor): manter agentes Cursor no escritório pelos hooks`
 

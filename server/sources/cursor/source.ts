@@ -1,0 +1,227 @@
+// Fonte de agentes do Cursor (AgentSource 'cursor', ver sources/source.ts): o Cursor não tem registro local de
+// sessões conhecido (lacuna C2), então a presença vem SÓ dos hooks. O script de hook manda o stdin do evento para
+// POST /api/cursor/events e a rota repassa para applyHookEvent (CursorLive), que cria/atualiza o agente no Office.
+//
+// Presença: um tracker por conversation_id. Cada evento atualiza lastHookAt; um relógio de ~1 s (poll) remove o
+// agente quando now - lastHookAt > STALE_PRESENCE_MS (o Cursor pode fechar sem sessionEnd, num crash). Um evento
+// novo reabre a sessão. Sem transcript no MVP: transcriptPathOf/terminalParser devolvem undefined.
+//
+// Status: aplicado por bordas (decide), a informação mais nova vence (statusAt): um evento atrasado não regride.
+import { join, resolve } from 'node:path';
+import type { Activity, AgentStatus, SourceInfo } from '../../../shared/types';
+import { ACCOUNT_COLORS, type DetectedAccount } from '../../accounts/detect';
+import type { AccountEntry, AccountsService } from '../../accounts/service';
+import { log } from '../../log';
+import type { Office } from '../../model/office';
+import type { AgentSource } from '../source';
+import type { TerminalParser } from '../terminal';
+import type { CursorLive } from './live';
+import { describeCursorTool, parseCursorEvent, statusBorder, type CursorEvent } from './rollout';
+
+/** Sem evento de hook por este tempo, a sessão é dada como encerrada (crash sem `sessionEnd`). */
+export const STALE_PRESENCE_MS = 5 * 60_000;
+/** Sala padrão quando o evento não diz o projeto (sem `workspace_roots` nem `cwd`). */
+export const DEFAULT_ROOM = 'cursor';
+const MAIN_ROLE = 'Agente principal (Cursor)';
+
+/** Eventos do Cursor tratados pela fonte; qualquer outro faz `applyHookEvent` devolver false. */
+const HOOK_EVENTS = new Set([
+  'sessionStart',
+  'beforeSubmitPrompt',
+  'preToolUse',
+  'postToolUse',
+  'postToolUseFailure',
+  'beforeShellExecution',
+  'afterShellExecution',
+  'beforeMCPExecution',
+  'afterMCPExecution',
+  'beforeReadFile',
+  'afterFileEdit',
+  'afterAgentResponse',
+  'afterAgentThought',
+  'stop',
+  'sessionEnd',
+]);
+
+export interface CursorSourceOptions {
+  accounts: AccountsService;
+  office: Office;
+  /** HOME do usuário (a pasta do Cursor sai daqui, ou de `dir`). */
+  home: string;
+  /** Pasta do Cursor lida por este processo; padrão `<home>/.cursor`. */
+  dir?: string;
+  now?: () => number;
+  pollMs?: number;
+}
+
+/** Estado interno de um agente Cursor (um por conversation_id). */
+interface CursorTracker {
+  key: string;
+  conversationId: string;
+  account: string;
+  /** Sala (`workspace_roots[0]` ou `cwd`), quando o evento a diz. */
+  cwd?: string;
+  status: AgentStatus;
+  /** Quando o status foi decidido: informação mais velha não o muda. */
+  statusAt: number;
+  waitingFor?: string;
+  /** Último evento de hook (presença). */
+  lastHookAt: number;
+  startedAt: number;
+  inOffice: boolean;
+}
+
+export class CursorSource implements AgentSource, CursorLive {
+  readonly provider = 'cursor' as const;
+  private entries: readonly AccountEntry[] = [];
+  private readonly accountId = 'cursor';
+  private readonly dir: string;
+  private readonly trackers = new Map<string, CursorTracker>();
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private readonly now: () => number;
+
+  constructor(private readonly opts: CursorSourceOptions) {
+    this.now = opts.now ?? Date.now;
+    this.dir = opts.dir ?? resolve(join(opts.home, '.cursor'));
+    this.register();
+  }
+
+  /** Registra a conta única do Cursor (`id` 'cursor', short/color sem colidir com Claude/Codex). */
+  private register(): void {
+    const taken = this.opts.accounts.allEntries();
+    const usedShorts = new Set(taken.map((e) => e.detected.short.toUpperCase()));
+    const usedColors = new Set(taken.map((e) => e.detected.color));
+    const short = ['C', 'U', 'R', 'S', 'O', 'Z'].find((l) => !usedShorts.has(l)) ?? 'C';
+    const color = ACCOUNT_COLORS.find((c) => !usedColors.has(c)) ?? ACCOUNT_COLORS[0];
+    const detected: DetectedAccount = { id: this.accountId, provider: 'cursor', configDir: this.dir, short, name: 'Cursor', color };
+    this.entries = this.opts.accounts.setProviderAccounts('cursor', [{ dir: this.dir, detected }]);
+  }
+
+  /** A conta do Cursor (id final no AccountsService), para o wiring/log do servidor. */
+  accountEntries(): readonly AccountEntry[] {
+    return this.entries;
+  }
+
+  start(): void {
+    this.timer = setInterval(() => this.poll(), this.opts.pollMs ?? 1_000);
+    this.timer.unref?.();
+  }
+
+  stop(): void {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+  }
+
+  sources(): SourceInfo[] {
+    let sessions = 0;
+    for (const t of this.trackers.values()) if (t.inOffice) sessions++;
+    return [{ label: this.accountId, provider: 'cursor', path: this.dir, sessions, ok: true }];
+  }
+
+  /** Sem transcript no MVP (P0 ainda não confirmou o schema). */
+  transcriptPathOf(_agentId: string): string | undefined {
+    return undefined;
+  }
+
+  /** Sem terminal no MVP (sem transcript). */
+  terminalParser(_agentId: string): TerminalParser | undefined {
+    return undefined;
+  }
+
+  /** Relógio de presença: remove os trackers sem evento novo por `STALE_PRESENCE_MS`. */
+  poll(): void {
+    const now = this.now();
+    for (const [key, t] of [...this.trackers]) {
+      if (now - t.lastHookAt <= STALE_PRESENCE_MS) continue;
+      this.leave(t);
+      this.trackers.delete(key);
+    }
+  }
+
+  applyHookEvent(input: Record<string, unknown>): boolean {
+    try {
+      return this.hookEvent(input);
+    } catch (err) {
+      log.warnOnce(`cursor-hook:${String(err).slice(0, 80)}`, `Cursor: evento de hook ignorado (${String(err).slice(0, 120)}).`);
+      return false;
+    }
+  }
+
+  private hookEvent(input: Record<string, unknown>): boolean {
+    const event = parseCursorEvent(input);
+    if (!event || !HOOK_EVENTS.has(event.name)) return false;
+    const now = this.now();
+    // Sem conversation_id (evento incompleto), a conta única usa a sala padrão como identidade: um só agente.
+    const conversationId = event.conversationId ?? DEFAULT_ROOM;
+    const key = `${this.accountId}:${conversationId}`;
+    let t = this.trackers.get(key);
+
+    if (event.name === 'sessionEnd') {
+      if (!t) return false;
+      this.leave(t);
+      this.trackers.delete(key);
+      return true;
+    }
+
+    if (t) {
+      t.lastHookAt = now;
+    } else {
+      t = { key, conversationId, account: this.accountId, status: 'idle', statusAt: 0, lastHookAt: now, startedAt: now, inOffice: false };
+      this.trackers.set(key, t);
+    }
+    if (!t.cwd) t.cwd = event.workspaceRoot ?? event.cwd;
+    this.reconcile(t);
+    if (!t.inOffice) return true;
+
+    const border = statusBorder(event.name);
+    if (border) this.decide(t, border.status, now, border.waitingFor);
+    const act = this.activityOf(t, event, now);
+    if (act) this.opts.office.addActivity(t.key, act, true);
+    return true;
+  }
+
+  /** Traz o agente para o escritório (sala `workspace_roots[0]`/`cwd` ou a padrão) com o status atual. */
+  private reconcile(t: CursorTracker): void {
+    if (t.inOffice) return;
+    const office = this.opts.office;
+    office.addMain({
+      id: t.key,
+      provider: 'cursor',
+      account: t.account,
+      sessionId: t.conversationId,
+      cwd: t.cwd ?? DEFAULT_ROOM,
+      role: MAIN_ROLE,
+      startedAt: t.startedAt,
+      status: t.status,
+      waitingFor: t.waitingFor,
+    });
+    t.inOffice = office.has(t.key);
+    if (t.inOffice) office.setStatus(t.key, t.status, t.waitingFor);
+  }
+
+  /** Sai do escritório (encerra a sessão). */
+  private leave(t: CursorTracker): void {
+    if (!t.inOffice) return;
+    this.opts.office.closeMain(t.key);
+    t.inOffice = false;
+  }
+
+  /** Borda de status: a informação mais nova vence (um evento atrasado não regride o estado). */
+  private decide(t: CursorTracker, status: AgentStatus, at: number, waitingFor?: string): void {
+    if (at < t.statusAt) return;
+    t.statusAt = at;
+    t.status = status;
+    if (waitingFor) t.waitingFor = waitingFor;
+    else delete t.waitingFor;
+    if (t.inOffice) this.opts.office.setStatus(t.key, status, t.waitingFor);
+  }
+
+  /** Activity traduzida do evento, quando ele traz uma ferramenta ou um comando. */
+  private activityOf(t: CursorTracker, event: CursorEvent, now: number): Activity | undefined {
+    const tool = event.toolName ?? (event.command ? 'Shell' : undefined);
+    if (!tool) return undefined;
+    const input = event.toolInput ?? (event.command ? { command: event.command } : {});
+    const { desc, tool: norm } = describeCursorTool(tool, input);
+    return { id: `${t.key}#${event.name}:${now.toString(36)}`, at: now, ...desc, tool: norm };
+  }
+}
