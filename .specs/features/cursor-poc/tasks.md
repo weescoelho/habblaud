@@ -106,14 +106,15 @@ T17 → T18
 
 **Done when**:
 
-- [ ] `Provider = 'claude' | 'codex' | 'cursor'` (aditivo; `provider` ausente continua `'claude'`)
-- [ ] `PROVIDER_NAME` ganha `cursor: 'Cursor'`; `ALIAS_TOOLS` ganha `cursor` com regex que nunca casa com aliases de `claude`/`codex`
-- [ ] `client/src/ui/provider.test.ts` cobre `PROVIDER_NAME.cursor` e `providerOf({ provider: 'cursor' })`; `server/accounts/detect.test.ts` (novo) cobre `parseToolAliases(_, _, 'cursor')` devolvendo `[]`
-- [ ] Gate check passes: `npm run typecheck && npx vitest run client/src/ui server/accounts`
-- [ ] Test count: 3+ casos passam (sem deleções silenciosas)
+- [x] `Provider = 'claude' | 'codex' | 'cursor'` (aditivo; `provider` ausente continua `'claude'`)
+- [x] `PROVIDER_NAME` ganha `cursor: 'Cursor'`; `ALIAS_TOOLS` ganha `cursor` com regex que nunca casa com aliases de `claude`/`codex`
+- [x] `client/src/ui/provider.test.ts` cobre `PROVIDER_NAME.cursor` e `providerOf({ provider: 'cursor' })`; `server/accounts/detect.test.ts` (novo) cobre `parseToolAliases(_, _, 'cursor')` devolvendo `[]`
+- [x] Gate check passes: `npm run typecheck && npx vitest run client/src/ui server/accounts`
+- [x] Test count: 3+ casos passam (sem deleções silenciosas)
 
 **Tests**: unit
 **Gate**: quick
+**Status**: ✅ Done
 
 **Commit**: `feat(cursor): reconhecer o Cursor como provedor no protocolo`
 
