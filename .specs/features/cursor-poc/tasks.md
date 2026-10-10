@@ -406,15 +406,17 @@ T17 → T18
 
 **Done when**:
 
-- [ ] Recebe um JSON no stdin e anexa uma linha `{ts, dir, event}` no diretório de captura (padrão `~/.habblaud/cursor-poc/`, override `HABBLAUD_CURSOR_POC_DIR`)
-- [ ] Evento com `transcript_path`: o valor e o dump do stdin são gravados no diretório de captura
-- [ ] stdin inválido/não-JSON → sai `0` sem escrever nada
-- [ ] `server/test/cursor-poc.test.ts` cobre a captura (HOME falso), o dump do transcript e o stdin inválido, rodando o hook como processo
-- [ ] Gate check passes: `npm test`
-- [ ] Test count: 4+ casos passam (sem deleções silenciosas)
+- [x] Recebe um JSON no stdin e anexa uma linha `{ts, dir, event}` no diretório de captura (padrão `~/.habblaud/cursor-poc/`, override `HABBLAUD_CURSOR_POC_DIR`)
+- [x] Evento com `transcript_path`: o valor e o dump do stdin são gravados no diretório de captura
+- [x] stdin inválido/não-JSON → sai `0` sem escrever nada
+- [x] `server/test/cursor-poc.test.ts` cobre a captura (HOME falso), o dump do transcript e o stdin inválido, rodando o hook como processo
+- [x] Gate check passes: `npm test`
+- [x] Test count: 4+ casos passam (sem deleções silenciosas)
 
 **Tests**: integration
 **Gate**: full
+
+**Status**: ✅ Done
 
 **Commit**: `feat(cursor): hook de captura log-tudo da POC P1`
 

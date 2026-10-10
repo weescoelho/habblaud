@@ -2,13 +2,14 @@
 // processo (tsx) sobre fixtures SINTÉTICAS e confere a saída e o código, como o harness será usado:
 // classificação + chaves/contagens (json/jsonl), tabelas+contagens (SQLite) e o caminho inexistente.
 import { spawnSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { tempDir } from './fixtures';
 
 const SCRIPT = resolve(__dirname, '../../scripts/cursor-poc.ts');
+const HOOK = resolve(__dirname, '../../mod/habblaud-cursor/poc-hook.mjs');
 const ROOT = resolve(__dirname, '../..');
 
 /** Roda o harness como o usuário rodaria: `node --import tsx scripts/cursor-poc.ts <args>`. */
@@ -117,5 +118,59 @@ describe('cursor-poc.ts transcript', () => {
     const r = cli(['transcrever']);
     expect(r.status).not.toBe(0);
     expect(`${r.stdout}${r.stderr}`).toMatch(/desconhecido/i);
+  });
+});
+
+/** Roda o hook de captura como a IDE rodaria: `node mod/habblaud-cursor/poc-hook.mjs` com o evento no stdin. */
+function hook(input: string, env: NodeJS.ProcessEnv) {
+  return spawnSync(process.execPath, [HOOK], {
+    input,
+    encoding: 'utf8',
+    timeout: 10_000,
+    env: { PATH: process.env.PATH, ...env },
+  });
+}
+
+describe('cursor-poc poc-hook.mjs (captura)', () => {
+  it('anexa {ts, dir, event} no diretório de captura (HOME falso, padrão ~/.habblaud/cursor-poc)', () => {
+    const home = join(tmp.dir, 'home');
+    const event = { hook_event_name: 'preToolUse', conversation_id: 'c1', cwd: '/proj', tool_name: 'Read' };
+    const r = hook(JSON.stringify(event), { HOME: home });
+    expect(r.status).toBe(0);
+    const log = readFileSync(join(home, '.habblaud', 'cursor-poc', 'events.jsonl'), 'utf8').trim();
+    expect(log.split('\n')).toHaveLength(1);
+    const line = JSON.parse(log) as { ts: string; dir: string; event: typeof event };
+    expect(typeof line.ts).toBe('string');
+    expect(line.dir).toBe('/proj');
+    expect(line.event.hook_event_name).toBe('preToolUse');
+    expect(line.event.conversation_id).toBe('c1');
+  });
+
+  it('evento com transcript_path: grava o caminho e o dump do stdin', () => {
+    const home = join(tmp.dir, 'home');
+    const raw = JSON.stringify({ hook_event_name: 'sessionStart', cwd: '/proj', transcript_path: '/proj/.cursor/transcript.jsonl' });
+    const r = hook(raw, { HOME: home });
+    expect(r.status).toBe(0);
+    const dir = join(home, '.habblaud', 'cursor-poc');
+    expect(readFileSync(join(dir, 'transcripts.txt'), 'utf8')).toContain('/proj/.cursor/transcript.jsonl');
+    const dumps = readdirSync(join(dir, 'stdin'));
+    expect(dumps).toHaveLength(1);
+    expect(readFileSync(join(dir, 'stdin', dumps[0]), 'utf8')).toBe(raw);
+  });
+
+  it('stdin inválido/não-JSON: sai 0 e não escreve nada', () => {
+    const home = join(tmp.dir, 'home');
+    const r = hook('isto não é json', { HOME: home });
+    expect(r.status).toBe(0);
+    expect(existsSync(join(home, '.habblaud', 'cursor-poc', 'events.jsonl'))).toBe(false);
+  });
+
+  it('HABBLAUD_CURSOR_POC_DIR troca o diretório de captura', () => {
+    const home = join(tmp.dir, 'home');
+    const dir = join(tmp.dir, 'capturas');
+    const r = hook(JSON.stringify({ hook_event_name: 'stop', cwd: '/p' }), { HOME: home, HABBLAUD_CURSOR_POC_DIR: dir });
+    expect(r.status).toBe(0);
+    expect(existsSync(join(dir, 'events.jsonl'))).toBe(true);
+    expect(existsSync(join(home, '.habblaud', 'cursor-poc', 'events.jsonl'))).toBe(false);
   });
 });
