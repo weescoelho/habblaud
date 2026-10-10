@@ -40,6 +40,14 @@
     "codex:uninstall": "tsx scripts/codex-install.ts uninstall",
     "codex:status": "tsx scripts/codex-install.ts status",
     "codex:bridge": "tsx scripts/codex-bridge.ts",
+    "cursor:install": "tsx scripts/cursor-install.ts install",
+    "cursor:uninstall": "tsx scripts/cursor-install.ts uninstall",
+    "cursor:status": "tsx scripts/cursor-install.ts status",
+    "cursor:poc:install": "tsx scripts/cursor-poc.ts install",
+    "cursor:poc:uninstall": "tsx scripts/cursor-poc.ts uninstall",
+    "cursor:poc:report": "tsx scripts/cursor-poc.ts report",
+    "cursor:poc:transcript": "tsx scripts/cursor-poc.ts transcript",
+    "cursor:poc:decision": "tsx scripts/cursor-poc.ts decision",
     "release": "tsx scripts/release.ts"
   },
   "devDependencies": {

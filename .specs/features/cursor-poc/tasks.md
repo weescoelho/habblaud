@@ -596,12 +596,13 @@ T17 → T18
 
 **Done when**:
 
-- [ ] Os dois scripts novos aparecem no `include` de `server/tsconfig.json` e são verificados por `npm run typecheck`
-- [ ] `package.json` expõe `cursor:install|uninstall|status` e `cursor:poc:install|uninstall|report|transcript|decision` via `tsx`
-- [ ] Gate check passes: `npm run typecheck && npm test && npm run build`
+- [x] Os dois scripts novos aparecem no `include` de `server/tsconfig.json` e são verificados por `npm run typecheck`
+- [x] `package.json` expõe `cursor:install|uninstall|status` e `cursor:poc:install|uninstall|report|transcript|decision` via `tsx`
+- [x] Gate check passes: `npm run typecheck && npm test && npm run build`
 
 **Tests**: none
 **Gate**: build
+**Status**: ✅ Done
 
 **Commit**: `build(cursor): registrar scripts no typecheck e no npm`
 
