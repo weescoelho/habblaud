@@ -282,15 +282,16 @@ T17 → T18
 
 **Done when**:
 
-- [ ] `POST /api/cursor/events` → `handleCursorEvent(req, res, { live: deps.cursorLive })`; `deps.cursorLive?: CursorLive` no `deps`
-- [ ] `GET`/outro método → `405`; Host não-local ou conexão não-loopback (fora do Docker) → `403`; corpo sem `event`/`hook_event_name` → `400`; corpo > 256 KB → `413`; sem `cursorLive` → `200 {ok:false}`
-- [ ] `/api/health` inclui `cursorEvents: !!deps.cursorLive`
-- [ ] `server/http/http.test.ts` cobre `403` (Host de rede + endereço remoto), `405`, `400`, `413`, `200 {ok:true}` e `{ok:false}` sem fonte, além de `health.cursorEvents`
-- [ ] Gate check passes: `npm test`
-- [ ] Test count: 6+ casos passam (sem deleções silenciosas)
+- [x] `POST /api/cursor/events` → `handleCursorEvent(req, res, { live: deps.cursorLive })`; `deps.cursorLive?: CursorLive` no `deps`
+- [x] `GET`/outro método → `405`; Host não-local ou conexão não-loopback (fora do Docker) → `403`; corpo sem `event`/`hook_event_name` → `400`; corpo > 256 KB → `413`; sem `cursorLive` → `200 {ok:false}`
+- [x] `/api/health` inclui `cursorEvents: !!deps.cursorLive`
+- [x] `server/http/http.test.ts` cobre `403` (Host de rede + endereço remoto), `405`, `400`, `413`, `200 {ok:true}` e `{ok:false}` sem fonte, além de `health.cursorEvents`
+- [x] Gate check passes: `npm test`
+- [x] Test count: 6+ casos passam (sem deleções silenciosas)
 
 **Tests**: integration
 **Gate**: full
+**Status**: ✅ Done
 
 **Commit**: `feat(cursor): expor POST /api/cursor/events com trava local`
 

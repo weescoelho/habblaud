@@ -1,6 +1,7 @@
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ModSummary, OfficeSnapshot, PermissionRequestInfo, UpdateStatus } from '../../shared/types';
@@ -22,7 +23,11 @@ interface Env {
   close: () => Promise<void>;
 }
 
-async function start(extra: Partial<ApiDeps> = {}, officeExtra: Partial<OfficeDeps> = {}): Promise<Env & { cleanup: () => void }> {
+async function start(
+  extra: Partial<ApiDeps> = {},
+  officeExtra: Partial<OfficeDeps> = {},
+  bind = '127.0.0.1',
+): Promise<Env & { cleanup: () => void }> {
   const tmp = tempDir();
   const dir = join(tmp.dir, '.claude');
   mkdirSync(join(dir, 'sessions'), { recursive: true });
@@ -55,11 +60,11 @@ async function start(extra: Partial<ApiDeps> = {}, officeExtra: Partial<OfficeDe
     const url = new URL(req.url ?? '/', 'http://x');
     if (!api(req, res, url)) serveStatic(req, res, url.pathname);
   });
-  await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
+  await new Promise<void>((ok) => server.listen(0, bind, ok));
   const port = (server.address() as AddressInfo).port;
   office.addMain({ id: '.claude:1', account: '.claude', sessionId: 's1', cwd: '/p/loja', role: 'Agente principal', startedAt: Date.now(), status: 'working' });
   return {
-    base: `http://127.0.0.1:${port}`,
+    base: `http://${bind === '0.0.0.0' ? '127.0.0.1' : bind}:${port}`,
     office,
     close: () =>
       new Promise((ok) => {
@@ -76,6 +81,14 @@ async function snapshotOf(base: string): Promise<OfficeSnapshot> {
 }
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
+
+/** Primeiro IPv4 de rede (não-loopback) da máquina, para provar a trava de conexão local. Sem ele, o caso remoto é pulado. */
+function nonLoopbackIPv4(): string | undefined {
+  for (const list of Object.values(os.networkInterfaces())) {
+    for (const i of list ?? []) if (i.family === 'IPv4' && !i.internal) return i.address;
+  }
+  return undefined;
+}
 
 /** Requisição crua (o fetch não deixa trocar o cabeçalho Host). */
 function raw(base: string, path: string, opts: { method?: string; headers?: Record<string, string>; body?: string } = {}): Promise<{ status: number; body: string }> {
@@ -265,6 +278,114 @@ describe('API HTTP', () => {
     // Tentativa de sair da pasta cai no index.html, nunca em arquivos de fora.
     const escape = await fetch(`${env.base}/..%2F..%2Fetc%2Fpasswd`);
     expect(await escape.text()).toContain('<title>Habblaud</title>');
+  });
+});
+
+describe('POST /api/cursor/events (eventos dos hooks do Cursor)', () => {
+  const LAN = nonLoopbackIPv4();
+
+  it('repassa o evento à fonte do Cursor e devolve {ok}; sem a fonte, {ok:false}', async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const live = await start({ cursorLive: { applyHookEvent: (e) => (calls.push(e), true) } });
+    try {
+      const res = await fetch(`${live.base}/api/cursor/events`, {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ event: { hook_event_name: 'sessionStart', conversation_id: 'c1', workspace_roots: ['/p/loja'] } }),
+      });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true });
+      expect(calls).toEqual([{ hook_event_name: 'sessionStart', conversation_id: 'c1', workspace_roots: ['/p/loja'] }]);
+      expect(((await (await fetch(`${live.base}/api/health`)).json()) as { cursorEvents: boolean }).cursorEvents).toBe(true);
+    } finally {
+      await live.close();
+      live.cleanup();
+    }
+
+    const off = await start();
+    try {
+      const res = await fetch(`${off.base}/api/cursor/events`, {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ event: { hook_event_name: 'sessionStart' } }),
+      });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: false });
+      expect(((await (await fetch(`${off.base}/api/health`)).json()) as { cursorEvents: boolean }).cursorEvents).toBe(false);
+    } finally {
+      await off.close();
+      off.cleanup();
+    }
+  });
+
+  it('a fonte que lança não derruba a rota: 200 {ok:false}', async () => {
+    const env = await start({
+      cursorLive: {
+        applyHookEvent: () => {
+          throw new Error('quebrou');
+        },
+      },
+    });
+    try {
+      const res = await fetch(`${env.base}/api/cursor/events`, {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ event: { hook_event_name: 'preToolUse' } }),
+      });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: false });
+    } finally {
+      await env.close();
+      env.cleanup();
+    }
+  });
+
+  it('Host que não é local: 403; GET: 405; sem JSON: 415; corpo inválido: 400; acima de 256 KB: 413', async () => {
+    const calls: unknown[] = [];
+    const env = await start({ cursorLive: { applyHookEvent: (e) => (calls.push(e), true) } });
+    try {
+      const port = new URL(env.base).port;
+      for (const host of [`habblaud.lan:${port}`, `192.168.0.10:${port}`]) {
+        const r = await raw(env.base, '/api/cursor/events', {
+          method: 'POST',
+          headers: { ...JSON_HEADERS, Host: host },
+          body: JSON.stringify({ event: { hook_event_name: 'sessionStart' } }),
+        });
+        expect(r.status, host).toBe(403);
+        expect(r.body).toMatch(/próprio computador/);
+      }
+      expect((await fetch(`${env.base}/api/cursor/events`)).status).toBe(405);
+      expect((await raw(env.base, '/api/cursor/events', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: '{}' })).status).toBe(415);
+      for (const body of [{}, { event: 'x' }, { event: {} }, { event: { hook_event_name: 1 } }, []]) {
+        const r = await fetch(`${env.base}/api/cursor/events`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body) });
+        expect(r.status, JSON.stringify(body)).toBe(400);
+      }
+      const big = JSON.stringify({ event: { hook_event_name: 'sessionStart', padding: 'x'.repeat(300 * 1024) } });
+      expect((await raw(env.base, '/api/cursor/events', { method: 'POST', headers: JSON_HEADERS, body: big })).status).toBe(413);
+      expect(calls).toHaveLength(0);
+    } finally {
+      await env.close();
+      env.cleanup();
+    }
+  });
+
+  it.skipIf(!LAN)('conexão pelo endereço de rede (não-loopback) é 403 mesmo com Host local', async () => {
+    const calls: unknown[] = [];
+    const env = await start({ cursorLive: { applyHookEvent: (e) => (calls.push(e), true) } }, {}, LAN);
+    try {
+      const port = new URL(env.base).port;
+      const r = await raw(env.base, '/api/cursor/events', {
+        method: 'POST',
+        headers: { ...JSON_HEADERS, Host: `127.0.0.1:${port}` },
+        body: JSON.stringify({ event: { hook_event_name: 'sessionStart', conversation_id: 'c1' } }),
+      });
+      expect(r.status).toBe(403);
+      expect(r.body).toMatch(/próprio computador/);
+      expect(calls).toHaveLength(0);
+    } finally {
+      await env.close();
+      env.cleanup();
+    }
   });
 });
 
