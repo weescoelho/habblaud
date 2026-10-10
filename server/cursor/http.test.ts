@@ -66,6 +66,11 @@ describe('POST /api/cursor/events: parse e manuseio', () => {
     expect(await request(base, '/api/cursor/events', { method: 'POST', body: { event: EVENT } })).toMatchObject({ status: 200, json: { ok: false } });
   });
 
+  it('fonte que não aproveita o evento (hook desconhecido): 200 {ok:false}', async () => {
+    const base = await serve({ applyHookEvent: () => false });
+    expect(await request(base, '/api/cursor/events', { method: 'POST', body: { event: EVENT } })).toMatchObject({ status: 200, json: { ok: false } });
+  });
+
   it('fonte que lança: 200 {ok:false} (nunca 500)', async () => {
     const base = await serve({
       applyHookEvent: () => {
