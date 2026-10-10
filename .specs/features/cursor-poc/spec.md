@@ -189,10 +189,10 @@ Each requirement gets a unique ID for tracking across design, tasks, and validat
 | CPOC-15        | P2: Hooks   | Design | Pending |
 | CPOC-16        | P2: Hooks   | Design | Pending |
 | CPOC-17        | P2: Transcript | Design | Pending |
-| CPOC-18        | P2: Transcript | Design | Pending |
-| CPOC-19        | P2: Transcript | Design | Pending |
-| CPOC-20        | P2: Transcript | Design | Pending |
-| CPOC-21        | P2: Transcript | Design | Pending |
+| CPOC-18        | P2: Transcript | Design | Implementing |
+| CPOC-19        | P2: Transcript | Design | Implementing |
+| CPOC-20        | P2: Transcript | Design | Implementing |
+| CPOC-21        | P2: Transcript | Design | Implementing |
 | CPOC-22        | P2: Transcript | Design | Implementing |
 | CPOC-23        | P2: Transcript | Design | Implementing |
 | CPOC-24        | P3: Decision | Design | Pending |

@@ -373,17 +373,19 @@ T17 → T18
 
 **Done when**:
 
-- [ ] `tsx scripts/cursor-poc.ts transcript --path <f>` imprime a classificação e as chaves/tabelas observadas com contagens
-- [ ] JSONL reporta nº de linhas, papéis distintos e presença de campos de tool-call; SQLite lista tabelas e contagens sem binário externo
-- [ ] `--path` inexistente → mensagem clara e `process.exitCode !== 0`; `--help`/sem subcomando → uso, saída 0
-- [ ] `server/test/cursor-poc.test.ts` (novo) spawna o script (`tsx`) sobre fixtures `jsonl`/`json`/SQLite sintéticos e o caminho inexistente, conferindo a saída e o código
-- [ ] Gate check passes: `npm test`
-- [ ] Test count: 5+ casos passam (sem deleções silenciosas)
+- [x] `tsx scripts/cursor-poc.ts transcript --path <f>` imprime a classificação e as chaves/tabelas observadas com contagens
+- [x] JSONL reporta nº de linhas, papéis distintos e presença de campos de tool-call; SQLite lista tabelas e contagens sem binário externo
+- [x] `--path` inexistente → mensagem clara e `process.exitCode !== 0`; `--help`/sem subcomando → uso, saída 0
+- [x] `server/test/cursor-poc.test.ts` (novo) spawna o script (`tsx`) sobre fixtures `jsonl`/`json`/SQLite sintéticos e o caminho inexistente, conferindo a saída e o código
+- [x] Gate check passes: `npm test`
+- [x] Test count: 5+ casos passam (sem deleções silenciosas)
 
 **Tests**: integration
 **Gate**: full
 
-**Commit**: `feat(cursor): CLI do harness com o subcomando transcript`
+**Status**: ✅ Done
+
+**Commit**: `feat(cursor): cli do harness com o subcomando transcript`
 
 ---
 
