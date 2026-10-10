@@ -191,15 +191,16 @@ T17 → T18
 
 **Done when**:
 
-- [ ] `parseCursorEvent(input)` devolve `CursorEvent` normalizado; campos ausentes viram `undefined`; lê aliases defensivos (`command`/`cmd`, `cwd`/`workspace` etc.) sem lançar
-- [ ] `describeCursorTool(rawName, input)` traduz `Shell`→`describeCommand`, `Read`/`Write`/`Grep`/`Glob`/`Task`/`WebSearch`→`describeTool`, `MCP:<tool>`→`mcp__<tool>`
-- [ ] `statusBorder(event)` mapeia os eventos tratados (`sessionStart`, `beforeSubmitPrompt`, `preToolUse`/`postToolUse`/`postToolUseFailure`, `beforeShellExecution`→`shell`, `afterShellExecution`→`working`, `before`/`afterMCPExecution`, `beforeReadFile`, `afterFileEdit`, `afterAgentResponse`/`afterAgentThought`, `stop`→`idle`) e devolve `undefined` para desconhecidos
-- [ ] `server/sources/cursor/rollout.test.ts` cobre normalização (com/sem `workspace_roots`), cada alias de ferramenta, `MCP:` e o mapa de status; 1:1 aos ACs desta task
-- [ ] Gate check passes: `npx vitest run server/sources/cursor`
-- [ ] Test count: 10+ casos passam (sem deleções silenciosas)
+- [x] `parseCursorEvent(input)` devolve `CursorEvent` normalizado; campos ausentes viram `undefined`; lê aliases defensivos (`command`/`cmd`, `cwd`/`workspace` etc.) sem lançar
+- [x] `describeCursorTool(rawName, input)` traduz `Shell`→`describeCommand`, `Read`/`Write`/`Grep`/`Glob`/`Task`/`WebSearch`→`describeTool`, `MCP:<tool>`→`mcp__<tool>`
+- [x] `statusBorder(event)` mapeia os eventos tratados (`sessionStart`, `beforeSubmitPrompt`, `preToolUse`/`postToolUse`/`postToolUseFailure`, `beforeShellExecution`→`shell`, `afterShellExecution`→`working`, `before`/`afterMCPExecution`, `beforeReadFile`, `afterFileEdit`, `afterAgentResponse`/`afterAgentThought`, `stop`→`idle`) e devolve `undefined` para desconhecidos
+- [x] `server/sources/cursor/rollout.test.ts` cobre normalização (com/sem `workspace_roots`), cada alias de ferramenta, `MCP:` e o mapa de status; 1:1 aos ACs desta task
+- [x] Gate check passes: `npx vitest run server/sources/cursor`
+- [x] Test count: 10+ casos passam (sem deleções silenciosas)
 
 **Tests**: unit
 **Gate**: quick
+**Status**: ✅ Done
 
 **Commit**: `feat(cursor): normalizar eventos de hook e traduzir ferramentas`
 
