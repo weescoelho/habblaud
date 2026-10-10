@@ -135,13 +135,14 @@ T17 → T18
 
 **Done when**:
 
-- [ ] `ServerConfig.cursor` existe com doc em PT-BR; default `true`; `HABBLAUD_CURSOR=0` (e `off`) → `false`; `HABBLAUD_CURSOR=1` → `true`
-- [ ] `server/config.test.ts` (novo) cobre default, desligado e ligado via `loadConfig({ HOME: <tmp>, HABBLAUD_IN_DOCKER: '0', ...env }, [])`
-- [ ] Gate check passes: `npx vitest run server/config.test.ts`
-- [ ] Test count: 3 casos passam (sem deleções silenciosas)
+- [x] `ServerConfig.cursor` existe com doc em PT-BR; default `true`; `HABBLAUD_CURSOR=0` (e `off`) → `false`; `HABBLAUD_CURSOR=1` → `true`
+- [x] `server/config.test.ts` (novo) cobre default, desligado e ligado via `loadConfig({ HOME: <tmp>, HABBLAUD_IN_DOCKER: '0', ...env }, [])`
+- [x] Gate check passes: `npx vitest run server/config.test.ts`
+- [x] Test count: 3 casos passam (sem deleções silenciosas)
 
 **Tests**: unit
 **Gate**: quick
+**Status**: ✅ Done
 
 **Commit**: `feat(cursor): adicionar a flag HABBLAUD_CURSOR`
 
