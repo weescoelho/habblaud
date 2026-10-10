@@ -1,6 +1,7 @@
 // Testes do harness local das POCs do Cursor (scripts/cursor-poc.ts). Cada caso RODA o script como
 // processo (tsx) sobre fixtures SINTÉTICAS e confere a saída e o código, como o harness será usado:
-// classificação + chaves/contagens (json/jsonl), tabelas+contagens (SQLite) e o caminho inexistente.
+// classificação + chaves/contagens (json/jsonl), tabelas+contagens (SQLite), o caminho inexistente e o
+// `decision` (bloqueio do hook de decisão contra um stub local que segura N s).
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -269,5 +270,59 @@ describe('cursor-poc install/uninstall/report', () => {
     const r = cli(['report'], { HOME: home });
     expect(r.status).toBe(0);
     expect(r.stdout).toMatch(/nenhum evento/i);
+  });
+});
+
+/** Medição impressa pelo `decision`: "Bloqueio medido: 1.02 s (pedido: 1 s)." */
+function measuredSeconds(stdout: string): number {
+  const m = /Bloqueio medido:\s*([0-9]+(?:\.[0-9]+)?)\s*s/.exec(stdout);
+  if (!m) throw new Error(`sem medição de bloqueio em:\n${stdout}`);
+  return Number(m[1]);
+}
+
+describe('cursor-poc.ts decision (bloqueio do hook de decisão)', () => {
+  it('--hold 1: mede ~1 s de bloqueio, aplica {"permission":"allow"} e sai 0 (dentro do limite)', () => {
+    const r = cli(['decision', '--hold', '1', '--limit', '5']);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('Stub no ar');
+    expect(r.stdout).toContain('aplicou a decisão: {"permission":"allow"}');
+    expect(r.stdout).toMatch(/Dentro do limite seguro/);
+    const sec = measuredSeconds(r.stdout);
+    expect(sec).toBeGreaterThanOrEqual(0.9);
+    expect(sec).toBeLessThan(4);
+  }, 30_000);
+
+  it('--hold igual ao limite: não é excesso (sai 0)', () => {
+    const r = cli(['decision', '--hold', '1', '--limit', '1']);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/Dentro do limite seguro/);
+  }, 30_000);
+
+  it('--hold acima do limite: reporta o limite seguro observado e sai ≠ 0', () => {
+    const r = cli(['decision', '--hold', '2', '--limit', '1']);
+    expect(r.status).not.toBe(0);
+    const out = `${r.stdout}${r.stderr}`;
+    expect(out).toMatch(/Limite seguro observado: 1 s/);
+    expect(out).toMatch(/excede o limite seguro/);
+    expect(r.stdout).toContain('aplicou a decisão: {"permission":"allow"}'); // o bloqueio foi medido
+    const sec = measuredSeconds(r.stdout);
+    expect(sec).toBeGreaterThanOrEqual(1.5);
+    expect(sec).toBeLessThan(6);
+  }, 30_000);
+
+  it('--hold/--limit inválidos e opção desconhecida: erro e saída ≠ 0', () => {
+    for (const args of [['decision', '--hold', 'abc'], ['decision', '--hold', '0'], ['decision', '--limit', '-1'], ['decision', '--nada']]) {
+      const r = cli(args);
+      expect(r.status, args.join(' ')).not.toBe(0);
+      expect(`${r.stdout}${r.stderr}`, args.join(' ')).toMatch(/--hold|--limit|desconhecida/);
+    }
+  });
+
+  it('--help lista o subcomando decision e as opções --hold/--limit', () => {
+    const r = cli(['--help']);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('decision');
+    expect(r.stdout).toContain('--hold');
+    expect(r.stdout).toContain('--limit');
   });
 });

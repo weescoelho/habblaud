@@ -199,8 +199,8 @@ Each requirement gets a unique ID for tracking across design, tasks, and validat
 | CPOC-25        | P3: Decision | Design | Implementing |
 | CPOC-26        | P3: Decision | Design | Implementing |
 | CPOC-27        | P3: Decision | Design | Implementing |
-| CPOC-28        | P3: Decision | Design | Pending |
-| CPOC-29        | P3: Decision | Design | Pending |
+| CPOC-28        | P3: Decision | Design | Implementing |
+| CPOC-29        | P3: Decision | Design | Implementing |
 
 **ID format:** `[CATEGORY]-[NUMBER]` (e.g., `AUTH-01`, `CART-03`, `NOTIF-02`)
 

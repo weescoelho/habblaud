@@ -564,14 +564,16 @@ T17 → T18
 
 **Done when**:
 
-- [ ] `decision --hold <N>` mede e reporta que o hook bloqueou ~`N` s e aplicou a decisão (`{permission}`)
-- [ ] Se `N` excede o limite seguro configurado, reporta o limite seguro observado e sai com código ≠ 0
-- [ ] `server/test/cursor-poc.test.ts` cobre o caminho feliz (bloqueio medido + decisão aplicada) e o excesso do limite
-- [ ] Gate check passes: `npm test`
-- [ ] Test count: 4+ casos passam (sem deleções silenciosas)
+- [x] `decision --hold <N>` mede e reporta que o hook bloqueou ~`N` s e aplicou a decisão (`{permission}`)
+- [x] Se `N` excede o limite seguro configurado, reporta o limite seguro observado e sai com código ≠ 0
+- [x] `server/test/cursor-poc.test.ts` cobre o caminho feliz (bloqueio medido + decisão aplicada) e o excesso do limite
+- [x] Gate check passes: `npm test`
+- [x] Test count: 4+ casos passam (sem deleções silenciosas)
 
 **Tests**: integration
 **Gate**: full
+
+**Status**: ✅ Done
 
 **Commit**: `feat(cursor): harness de medição do bloqueio de decisão`
 
