@@ -15,8 +15,8 @@
 - **Feature**: `cursor-poc` (`.specs/features/cursor-poc/`) — POCs P0–P3 (transcript, cobertura de hooks, bloqueio de decisão e ingestão no escritório)
 - **Phase / Task**: Execute concluído — T1–T18 ✅; validação independente PASS; runbook entregue. Aguardando revisão do usuário antes de P4–P8.
 - **Completed**: 18/18 tasks (T1–T18) commitadas; Fix 1 (`2e7cf02`) fechou a lacuna de CPOC-08 (rota `{ok:false}` para evento desconhecido); Verifier independente PASS (`validation.md`: 29/29 ACs, 12/13 mutações killed, M11 equivalente; gate 1224 passed / 2 skipped); `validate_state.py` exit 0.
-- **In-progress** (file:line): nada — working tree limpo na branch `cursor-poc` (HEAD `ab308b3`).
-- **Next step**: revisão do usuário do relatório de verificação (`.specs/features/cursor-poc/validation.md`) e do runbook (`docs/analise/08-runbook-poc-cursor.md`); depois decidir P4–P8; configurar `origin` = fork do usuário; push/PR só com go-ahead explícito.
+- **In-progress** (file:line): nada — working tree limpo na branch `cursor-poc`.
+- **Next step**: revisão do usuário do relatório de verificação (`.specs/features/cursor-poc/validation.md`) e do runbook (`docs/analise/08-runbook-poc-cursor.md`); executar as POCs ao vivo com o runbook numa máquina com Cursor; depois decidir P4–P8. PR upstream só com go-ahead explícito.
 - **Blockers**: a validação ao vivo (P0/P1/P2/P3 na IDE do Cursor) depende de uma máquina com assinatura Cursor — pendente, a executar pelo runbook.
 - **Uncommitted files**: none (`.specs/` do fork versionado; `docs/analise/08-runbook-poc-cursor.md` commitado dentro do fork).
-- **Branch**: `cursor-poc` (HEAD `ab308b3`; remote configurado: apenas `upstream`).
+- **Branch**: `cursor-poc` (enviado para `origin/cursor-poc`). Remotes: `origin` = fork `weescoelho/habblaud`; `upstream` = `marmottajr/habblaud`.
