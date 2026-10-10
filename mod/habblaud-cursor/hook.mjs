@@ -12,9 +12,10 @@
 // preToolUse → o `tool_name` que a IDE mandar. Títulos e resumos saem da tradução das ferramentas do Cursor no
 // servidor (sources/cursor/rollout.ts: "Shell"→Bash, "MCP:<x>"→mcp__x).
 //
-// Config: ~/.habblaud/cursor-hook.json ({port, decisionTimeoutS}, gravado pelo instalador); HABBLAUD_PORT vale como
-// reserva (o ambiente do hook é o do processo que subiu a IDE, então variáveis do seu shell nem sempre chegam aqui).
-// Padrões: porta 4747, espera 25 s (entre 5 e 120).
+// Config: ~/.habblaud/cursor-hook.json ({port, decisionTimeoutS}), criado à mão se quiser destoar do padrão —
+// o instalador (npm run cursor:install) não escreve este arquivo; HABBLAUD_PORT vale como reserva (o ambiente do hook
+// é o do processo que subiu a IDE, então variáveis do seu shell nem sempre chegam aqui). Padrões: porta 4747,
+// espera 25 s (entre 5 e 120).
 //
 // Regras: node puro (22+), só `node:*`, sem dependências; nunca trava nem quebra a sessão: todo erro = sair com 0 e
 // sem saída; nos eventos de observação nada vai para o stdout (no beforeSubmitPrompt ele viraria contexto do modelo).
@@ -30,7 +31,7 @@ export const DEFAULT_PORT = 4747;
 export const DEFAULT_WAIT_S = 25;
 export const MIN_WAIT_S = 5;
 export const MAX_WAIT_S = 120;
-/** Arquivo de configuração, em ~/.habblaud (o instalador grava). */
+/** Arquivo de configuração opcional, em ~/.habblaud (criado à mão; o instalador não grava). */
 export const CONFIG_FILE = 'cursor-hook.json';
 /** Eventos mandados ao Habblaud (POST /api/cursor/events). */
 export const OBSERVED = new Set([

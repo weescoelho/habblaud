@@ -533,15 +533,17 @@ T17 → T18
 
 **Done when**:
 
-- [ ] `install` acrescenta o comando do `hook.mjs` aos eventos tratados, preservando hooks alheios, na mesma posição, com backup; idempotente
-- [ ] `uninstall` remove só os nossos handlers; `status` informa instalado/ausente
-- [ ] `hooks.json` ausente é criado; arquivo quebrado não é destruído sem backup
-- [ ] `server/test/cursor-install.test.ts` (novo) cobre as funções puras e o comando de verdade sobre `HOME`/`hooks.json` falsos (merge, backup, idempotência, uninstall, status)
-- [ ] Gate check passes: `npm test`
-- [ ] Test count: 8+ casos passam (sem deleções silenciosas)
+- [x] `install` acrescenta o comando do `hook.mjs` aos eventos tratados, preservando hooks alheios, na mesma posição, com backup; idempotente
+- [x] `uninstall` remove só os nossos handlers; `status` informa instalado/ausente
+- [x] `hooks.json` ausente é criado; arquivo quebrado não é destruído sem backup
+- [x] `server/test/cursor-install.test.ts` (novo) cobre as funções puras e o comando de verdade sobre `HOME`/`hooks.json` falsos (merge, backup, idempotência, uninstall, status)
+- [x] Gate check passes: `npm test`
+- [x] Test count: 8+ casos passam (sem deleções silenciosas)
 
 **Tests**: integration
 **Gate**: full
+
+**Status**: ✅ Done
 
 **Commit**: `feat(cursor): instalador dos hooks reais em hooks.json`
 
