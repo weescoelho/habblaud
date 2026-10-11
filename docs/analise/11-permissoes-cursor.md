@@ -160,6 +160,37 @@ O botão só aparece quando há uma regra derivável (`suggest_rule` presente). 
 sempre `allow`; para **recusar** um comando, acrescente uma regra `deny` à mão (o `deny` sempre
 vence o `allow`).
 
+### Desligar de vez os pedidos de comando (padrão "não perguntar nada")
+
+Quem quer que `cd`, comandos fixos (`npm run build`) e scripts próprios **nunca** peçam, sem
+precisar aprovar um a um, configura duas camadas:
+
+1. **Base do Cursor** — `~/.cursor/permissions.json` + Run Mode **Auto-review** (Settings > Agents >
+   Approvals & Execution): uma `allow_instructions` cobre `cd`, `pwd`, `ls`, `git status/branch/log/diff`,
+   os scripts de `package.json` (`npm run`/`pnpm`/`yarn`) e versões; uma `block_instructions` guarda
+   `rm`, `sudo`, `chmod`, force push e `curl … | sh`.
+2. **Habblaud (com o escritório aberto)** — `rules` de `~/.habblaud/cursor-hook.json`: uma regra
+   `deny` para o que não pode, e uma regra-curinga `allow` no fim (o `deny` sempre vence o `allow`):
+
+```jsonc
+{
+  "rules": [
+    { "tool": "Shell", "pattern": "^rm(\\s|$)", "effect": "deny", "note": "apagar arquivos" },
+    { "tool": "Shell", "pattern": "^sudo(\\s|$)", "effect": "deny", "note": "sudo" },
+    { "tool": "Shell", "pattern": "^chmod(\\s|$)", "effect": "deny", "note": "permissões" },
+    { "tool": "Shell", "pattern": "^git push.*-f(\\s|$)", "effect": "deny", "note": "force push" },
+    { "tool": "Shell", "pattern": "\\|\\s*(sh|bash)(\\s|$)", "effect": "deny", "note": "script baixado na hora" },
+    { "tool": "Shell", "pattern": ".*", "effect": "allow", "note": "demais comandos" }
+  ]
+}
+```
+
+Com isso, com o escritório aberto é o hook que decide tudo (allow para o resto, deny para a lista
+de guarda) — nenhum cartão de shell. Com o escritório fechado, quem decide é a camada base do
+Cursor (Auto-review). MCP continua pedindo (evento de decisão): acrescente
+`{ "tool": "*", "pattern": ".*", "effect": "allow" }` se quiser o mesmo para ferramentas MCP
+(o `tool: "*"` casa qualquer ferramenta; os `deny` continuam vencendo).
+
 Exemplo do resultado de um "sempre permitir" para `npm test`:
 
 ```jsonc
