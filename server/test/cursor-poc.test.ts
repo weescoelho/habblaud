@@ -608,3 +608,85 @@ describe('cursor-poc.ts followup (P6)', () => {
     expect(r.stdout).toContain('--message');
   });
 });
+
+/** Escreve um `<projects>/<projeto>/agent-transcripts/<id>/<id>.jsonl` sintético. */
+function writeSession(projectsDir: string, project: string, id: string, lines: string[]): string {
+  const dir = join(projectsDir, project, 'agent-transcripts', id);
+  mkdirSync(dir, { recursive: true });
+  const file = join(dir, `${id}.jsonl`);
+  writeFileSync(file, `${lines.join('\n')}\n`);
+  return file;
+}
+
+/** Linha de ferramenta no formato do transcript do Cursor (P0/C1). */
+const toolLine = (role: string, name: string, input: Record<string, unknown>): string =>
+  JSON.stringify({ role, message: { content: [{ type: 'tool_use', name, input }] } });
+const textLine = (role: string, text: string): string => JSON.stringify({ role, message: { content: [{ type: 'text', text }] } });
+
+describe('cursor-poc.ts history (P7)', () => {
+  it('--projects <dir>: lista as sessões, ferramentas, efeitos e ignora linha corrompida', () => {
+    const projects = join(tmp.dir, 'projects');
+    writeSession(projects, 'proj-a', 'sess-1', [
+      textLine('user', 'faça o deploy'),
+      toolLine('assistant', 'Read', { file_path: '/proj/app.ts' }),
+      toolLine('assistant', 'Shell', { command: 'git push origin main' }),
+      toolLine('assistant', 'Shell', { command: 'gh pr create --fill' }),
+      '{ linha corrompida',
+    ]);
+    writeSession(projects, 'proj-b', 'sess-2', [
+      textLine('user', 'revise'),
+      toolLine('assistant', 'Grep', { pattern: 'foo' }),
+      toolLine('assistant', 'Shell', { command: 'gh pr merge 42 --squash' }),
+    ]);
+
+    const r = cli(['history', '--projects', projects]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/Sessões: 2 · com efeitos: 2/);
+    expect(r.stdout).toContain('sess-1');
+    expect(r.stdout).toContain('sess-2');
+    expect(r.stdout).toMatch(/Bash\s+2/);
+    expect(r.stdout).toMatch(/Read\s+1/);
+    expect(r.stdout).toContain('git push');
+    expect(r.stdout).toContain('gh pr create');
+    expect(r.stdout).toContain('gh pr merge');
+    expect(r.stdout).toMatch(/turnos: 4 \(assistant 3, user 1\)/); // a linha corrompida não vira turno
+  });
+
+  it('sessão sem efeitos: não imprime a linha de efeitos', () => {
+    const projects = join(tmp.dir, 'projects');
+    writeSession(projects, 'proj', 'sess', [textLine('user', 'oi'), toolLine('assistant', 'Glob', { pattern: '*.ts' })]);
+    const r = cli(['history', '--projects', projects]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/Sessões: 1 · com efeitos: 0/);
+    expect(r.stdout).not.toMatch(/^ {4}efeitos:/m);
+  });
+
+  it('sem --projects: usa ~/.cursor/projects do HOME', () => {
+    const home = join(tmp.dir, 'home');
+    writeSession(join(home, '.cursor', 'projects'), 'proj', 'sess-home', [textLine('user', 'oi')]);
+    const r = cli(['history'], { HOME: home });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('sess-home');
+  });
+
+  it('diretório inexistente: mensagem explicativa e código 0', () => {
+    const r = cli(['history', '--projects', join(tmp.dir, 'nao-existe')]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/nenhum diretório de projects/i);
+  });
+
+  it('diretório vazio: mensagem de "nenhuma sessão" e código 0', () => {
+    const projects = join(tmp.dir, 'vazio');
+    mkdirSync(projects, { recursive: true });
+    const r = cli(['history', '--projects', projects]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/nenhuma sessão/i);
+  });
+
+  it('--help lista o subcomando history e a opção --projects', () => {
+    const r = cli(['--help']);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('history');
+    expect(r.stdout).toContain('--projects');
+  });
+});

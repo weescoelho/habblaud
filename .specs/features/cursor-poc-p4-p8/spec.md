@@ -217,10 +217,10 @@ Each requirement gets a unique ID for tracking across design, tasks, and validat
 | CP48-15        | S4: Followup | Design | Implementing |
 | CP48-16        | S4: Followup | Design | Implementing |
 | CP48-17        | S4: Followup | Design | Implementing |
-| CP48-18        | S5: Histórico | Design | Pending |
-| CP48-19        | S5: Histórico | Design | Pending |
-| CP48-20        | S5: Histórico | Design | Pending |
-| CP48-21        | S5: Histórico | Design | Pending |
+| CP48-18        | S5: Histórico | Design | Implementing |
+| CP48-19        | S5: Histórico | Design | Implementing |
+| CP48-20        | S5: Histórico | Design | Implementing |
+| CP48-21        | S5: Histórico | Design | Implementing |
 | CP48-22        | S6: Runbook | Design | Pending |
 | CP48-23        | S6: Runbook | Design | Pending |
 

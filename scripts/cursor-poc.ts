@@ -8,6 +8,7 @@
 //   npm run cursor:poc:cli        [-- --path <arquivo>] # caracteriza o NDJSON do cursor-agent (P5)
 //   npm run cursor:poc:followup   [-- --message <texto>] # roda o probe do `stop` e valida a forma (P6)
 //   npm run cursor:poc:usage      [-- --path <dir>]     # lista os candidatos de uso/plano do Cursor (P8)
+//   npm run cursor:poc:history    [-- --projects <dir>] # sessões + efeitos git/gh nos transcripts (P7)
 //   npm run cursor:poc:decision   [-- --hold N]         # mede o bloqueio do hook de decisão contra um stub local
 //
 // O transcript do Cursor ainda não tem schema confirmado (lacuna C1): este harness só OBSERVA. Tudo é
@@ -20,7 +21,7 @@ import type { AddressInfo } from 'node:net';
 import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { classifyTranscript, inspectTranscript, type TranscriptInspection } from '../server/sources/cursor/transcript';
+import { classifyTranscript, inspectTranscript, parseCursorTranscriptLine, type TranscriptInspection } from '../server/sources/cursor/transcript';
 import { quotePath, readSettings, tildify, writeSettings, type Settings } from './statusline-install';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -76,6 +77,9 @@ const USAGE = `Uso: npm run cursor:poc:<subcomando> -- [opções]
                                 sem rede e sem imprimir valores
   followup [--message <texto>]  roda o probe de followup com um stop sintético e valida
                                 a forma {"followup_message": <texto>} (P6)
+  history [--projects <dir>]    varre agent-transcripts/<id>/<id>.jsonl (padrão
+                                ~/.cursor/projects) e resume as sessões + efeitos
+                                git push/gh pr create|merge (P7)
   decision [--hold <N>] [--limit <S>]
                                 sobe um stub local, roda o hook de decisão com um
                                 beforeShellExecution sintético e mede o bloqueio;
@@ -100,11 +104,15 @@ export type RunOptions =
   | { command: 'cli'; path?: string }
   | { command: 'usage'; path?: string }
   | { command: 'followup'; message?: string }
+  | { command: 'history'; projects?: string }
   | { command: 'decision'; holdS: number; limitS: number };
 
 class FatalError extends Error {}
 
 const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+
+/** Comparador estável por chave (ordem alfabética) para os mapas de contagem. */
+const byKey = (a: [string, number], b: [string, number]): number => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
 
 /** Segundos positivos de uma opção (`--hold`/`--limit`), ou erro claro. */
 function positiveSeconds(value: string | undefined, flag: string): number {
@@ -192,6 +200,19 @@ export function parseArgs(argv: string[]): RunOptions | 'help' {
       }
     }
     return { command: 'followup', message };
+  }
+  if (command === 'history') {
+    let projects: string | undefined;
+    for (let i = 0; i < rest.length; i++) {
+      const a = rest[i];
+      if (a === '--projects') {
+        projects = rest[++i];
+        if (!projects) throw new FatalError('--projects precisa de um diretório.');
+      } else {
+        throw new FatalError(`opção desconhecida: ${a}`);
+      }
+    }
+    return { command: 'history', projects };
   }
   if (command === 'decision') {
     let holdS = DEFAULT_HOLD_S;
@@ -627,14 +648,13 @@ export function parseCliStream(text: string): CliSummary {
 export function formatCliSummary(s: CliSummary): string[] {
   const total = [...s.kinds.values()].reduce((a, b) => a + b, 0);
   const calls = [...s.tools.values()].reduce((a, b) => a + b, 0);
-  const byName = (a: [string, number], b: [string, number]): number => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
   return [
     `Session-id: ${s.sessionId ?? '(nenhum)'}`,
     `Eventos: ${total} · ilegíveis: ${s.malformed}`,
     'Tipos:',
-    ...[...s.kinds.entries()].sort(byName).map(([k, n]) => `  ${k}  ${n}`),
+    ...[...s.kinds.entries()].sort(byKey).map(([k, n]) => `  ${k}  ${n}`),
     `Ferramentas: ${s.tools.size} distintas, ${calls} chamadas`,
-    ...[...s.tools.entries()].sort(byName).map(([k, n]) => `  ${k}  ${n}`),
+    ...[...s.tools.entries()].sort(byKey).map(([k, n]) => `  ${k}  ${n}`),
   ];
 }
 
@@ -741,6 +761,93 @@ function formatUsageHit(hit: UsageHit, home: string): string {
   return `${tildify(hit.path, home)}  ${hit.size} B  ${new Date(hit.mtimeMs).toISOString()}  [${hit.kind}]`;
 }
 
+// ---------------------------------------------------------------- history (P7)
+
+/** Resumo de uma sessão do Cursor (a partir de um `agent-transcripts/<id>/<id>.jsonl`). */
+export interface SessionSummary {
+  id: string;
+  path: string;
+  mtimeMs: number;
+  /** Nº de linhas com `role` (a soma dos turnos por papel). */
+  turns: number;
+  /** Nº de turnos por `role` (user/assistant/…). */
+  roles: Map<string, number>;
+  /** Ferramentas usadas, já com o nome normalizado por `describeCursorTool`. */
+  tools: Map<string, number>;
+  /** Efeitos de "sala" detectados (`git push`, `gh pr create`, `gh pr merge`). */
+  effects: string[];
+}
+
+/** Efeitos procurados no texto do transcript (Fase 4): a publicação e a abertura/fusão de PR. */
+const EFFECT_PATTERNS: ReadonlyArray<readonly [string, RegExp]> = [
+  ['git push', /\bgit\s+push\b/],
+  ['gh pr create', /\bgh\s+pr\s+create\b/],
+  ['gh pr merge', /\bgh\s+pr\s+merge\b/],
+];
+
+/** Efeitos de `git`/`gh` citados no texto do transcript (ordem das regras, sem repetir). */
+export function detectEffects(text: string): string[] {
+  return EFFECT_PATTERNS.filter(([, re]) => re.test(text)).map(([name]) => name);
+}
+
+/** Resume o texto de uma sessão: turnos por `role`, ferramentas e efeitos. Nunca lança. */
+export function summarizeSessionText(id: string, path: string, mtimeMs: number, text: string): SessionSummary {
+  const roles = new Map<string, number>();
+  const tools = new Map<string, number>();
+  let turns = 0;
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const { activities, role } = parseCursorTranscriptLine(trimmed);
+    if (role) {
+      turns++;
+      roles.set(role, (roles.get(role) ?? 0) + 1);
+    }
+    for (const activity of activities) if (activity.tool) tools.set(activity.tool, (tools.get(activity.tool) ?? 0) + 1);
+  }
+  return { id, path, mtimeMs, turns, roles, tools, effects: detectEffects(text) };
+}
+
+/** Só os diretórios de `dir` (vazio se não existir/ilegível). Nunca lança. */
+function readDirs(dir: string): string[] {
+  try {
+    return readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Varre `<projectsDir>/<projeto>/agent-transcripts/<id>/<id>.jsonl` e resume cada sessão
+ * (id, mtime, turnos, ferramentas via `parseCursorTranscriptLine` e efeitos). Ordenado por
+ * caminho; diretório inexistente/ilegível devolve `[]`. Nunca lança.
+ */
+export function enumerateSessions(projectsDir: string): SessionSummary[] {
+  const out: SessionSummary[] = [];
+  for (const project of readDirs(projectsDir)) {
+    const transcriptsDir = join(projectsDir, project, 'agent-transcripts');
+    for (const id of readDirs(transcriptsDir)) {
+      const file = join(transcriptsDir, id, `${id}.jsonl`);
+      let st;
+      try {
+        st = statSync(file);
+      } catch {
+        continue;
+      }
+      let text = '';
+      try {
+        text = readFileSync(file, 'utf8');
+      } catch {
+        text = '';
+      }
+      out.push(summarizeSessionText(id, file, st.mtimeMs, text));
+    }
+  }
+  return out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+}
+
 // ---------------------------------------------------------------- followup (P6)
 
 /** Caminho do probe de followup: HABBLAUD_CURSOR_POC_FOLLOWUP_HOOK (testes) ou o probe do harness. */
@@ -841,6 +948,8 @@ export async function run(opts: RunOptions, ctx: RunContext): Promise<number> {
       return runUsage(opts, ctx);
     case 'followup':
       return runFollowup(opts, ctx);
+    case 'history':
+      return runHistory(opts, ctx);
     case 'decision':
       return runDecision(opts, ctx);
   }
@@ -982,6 +1091,31 @@ function runUsage(opts: { path?: string }, ctx: RunContext): number {
   for (const hit of hits) {
     ctx.out(formatUsageHit(hit, ctx.home));
     for (const line of describeUsageFile(hit.path)) ctx.out(`  ${line}`);
+  }
+  return 0;
+}
+
+/** Varre os transcripts (`--projects` ou ~/.cursor/projects) e imprime as sessões, ferramentas e efeitos. */
+function runHistory(opts: { projects?: string }, ctx: RunContext): number {
+  const root = opts.projects ? resolve(opts.projects) : join(ctx.home, '.cursor', 'projects');
+  if (!existsSync(root)) {
+    ctx.out(`Nenhum diretório de projects em ${tildify(root, ctx.home)}.`);
+    ctx.out('O Cursor ainda não gravou transcripts (ou o caminho é outro).');
+    return 0;
+  }
+  const sessions = enumerateSessions(root);
+  if (!sessions.length) {
+    ctx.out(`Nenhuma sessão em ${tildify(root, ctx.home)} (sem agent-transcripts/<id>/<id>.jsonl).`);
+    return 0;
+  }
+  const withEffects = sessions.filter((s) => s.effects.length).length;
+  ctx.out(`Sessões: ${sessions.length} · com efeitos: ${withEffects}`);
+  for (const s of sessions) {
+    const roles = [...s.roles.entries()].sort(byKey).map(([r, n]) => `${r} ${n}`).join(', ') || '(sem papéis)';
+    const tools = [...s.tools.entries()].sort(byKey).map(([t, n]) => `${t} ${n}`).join(', ') || '(sem ferramentas)';
+    ctx.out(`  ${s.id}  ${new Date(s.mtimeMs).toISOString()}  turnos: ${s.turns} (${roles})`);
+    ctx.out(`    ferramentas: ${tools}`);
+    if (s.effects.length) ctx.out(`    efeitos: ${s.effects.join(', ')}`);
   }
   return 0;
 }

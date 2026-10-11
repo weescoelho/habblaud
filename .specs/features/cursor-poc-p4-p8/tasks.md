@@ -10,7 +10,7 @@ Implement these tasks with the `tlc-spec-driven` skill: **activate it by name an
 
 **Design**: `.specs/features/cursor-poc-p4-p8/design.md`
 **Spec**: `.specs/features/cursor-poc-p4-p8/spec.md`
-**Status**: Em execução (T1 ✅, T2 ✅, T3 ✅, T4 ✅, T5 ✅; T6–T8 pendentes)
+**Status**: Em execução (T1 ✅, T2 ✅, T3 ✅, T4 ✅, T5 ✅, T6 ✅; T7–T8 pendentes)
 
 ---
 
@@ -252,16 +252,16 @@ T7 → T8
 
 **Done when**:
 
-- [ ] `enumerateSessions(projectsDir)` devolve id/mtime/turnos/ferramentas por sessão; `detectEffects(text)` acha `git push`, `gh pr create`, `gh pr merge`
-- [ ] `history --projects <dir>` sobre fixtures sintéticas (uma sessão com `git push`/`gh pr create`, uma linha corrompida) reporta as sessões, ferramentas e efeitos; diretório inexistente → mensagem e saída `0`
-- [ ] Reusa o parser (linha desconhecida não lança)
-- [ ] `server/test/cursor-poc.test.ts` cobre os casos acima
-- [ ] Gate check passes: `npx vitest run server/test/cursor-poc.test.ts`
-- [ ] Test count: 4+ casos passam (sem deleções silenciosas)
+- [x] `enumerateSessions(projectsDir)` devolve id/mtime/turnos/ferramentas por sessão; `detectEffects(text)` acha `git push`, `gh pr create`, `gh pr merge`
+- [x] `history --projects <dir>` sobre fixtures sintéticas (uma sessão com `git push`/`gh pr create`, uma linha corrompida) reporta as sessões, ferramentas e efeitos; diretório inexistente → mensagem e saída `0`
+- [x] Reusa o parser (linha desconhecida não lança)
+- [x] `server/test/cursor-poc.test.ts` cobre os casos acima
+- [x] Gate check passes: `npx vitest run server/test/cursor-poc.test.ts`
+- [x] Test count: 4+ casos passam (sem deleções silenciosas)
 
 **Tests**: unit
 **Gate**: quick
-**Status**: ⬜ Pending
+**Status**: ✅ Complete
 
 **Commit**: `feat(cursor): subcomando history para sessoes e efeitos (p7)`
 
