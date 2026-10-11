@@ -5,7 +5,7 @@
 // (ex.: `command`/`cmd`, `cwd`/`workspace`, `conversation_id`/`conversationId`/`session_id`) e nunca lançamos por
 // causa de um campo ausente ou com tipo inesperado.
 import { describeCommand, describeTool, maskSecrets, truncate, type ActivityDescription } from '../../../shared/activity';
-import type { ActivityKind, AgentStatus } from '../../../shared/types';
+import type { ActivityKind, AgentStatus, EditDiff } from '../../../shared/types';
 
 type Rec = Record<string, unknown>;
 
@@ -42,6 +42,72 @@ function firstRec(...vals: unknown[]): Rec | undefined {
 /** Número finito (os campos de token do hook); qualquer outra coisa é ignorada. */
 function num(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+}
+
+/** Máximo de caracteres guardados de cada trecho do diff do evento (o conteúdo cru é mascarado/cortado aqui). */
+const DIFF_TEXT_MAX = 4_000;
+/** Máximo de edições guardadas do diff do evento (o resto não entra no resumo). */
+const DIFF_EDITS_MAX = 50;
+/** Ferramentas de edição cujo input rende um resumo de diff na Activity. */
+const EDIT_TOOLS = new Set(['StrReplace', 'Edit', 'MultiEdit', 'Write', 'NotebookEdit']);
+
+/** Texto exato de um campo (sem `trim`, preserva quebras): só strings valem; o resto fica `undefined`. */
+function text(v: unknown): string | undefined {
+  return typeof v === 'string' ? v : undefined;
+}
+
+/** Corta preservando quebras de linha (o `truncate` do balão colapsa espaços e destruiria o diff). */
+function clipText(s: string, max: number): string {
+  return s.length > max ? `${s.slice(0, max)}…` : s;
+}
+
+/** Trecho de uma edição (`old`/`new`) do diff do evento. */
+export interface CursorEdit {
+  old: string;
+  new: string;
+}
+
+/** Diff de uma edição do hook (`afterFileEdit`), já mascarado/cortado no servidor. */
+export interface CursorDiff {
+  /** Caminho do arquivo editado ('' quando o evento não traz). */
+  file: string;
+  edits: CursorEdit[];
+}
+
+/** Normaliza os `edits` de um input (`old_string`/`new_string` ou `old`/`new`), sem mascarar. */
+function editsFrom(raw: unknown): CursorEdit[] {
+  if (!Array.isArray(raw) || !raw.length) return [];
+  const out: CursorEdit[] = [];
+  for (const e of raw.slice(0, DIFF_EDITS_MAX)) {
+    const r = rec(e);
+    if (!r) continue;
+    out.push({ old: text(r.old_string) ?? text(r.old) ?? '', new: text(r.new_string) ?? text(r.new) ?? '' });
+  }
+  return out;
+}
+
+/** Diff do evento já mascarado/cortado (o hook NÃO mascara: a máscara/truncamento é sempre do servidor). */
+function cursorDiff(raw: unknown, file: string | undefined): CursorDiff | undefined {
+  const edits = editsFrom(raw).map((e) => ({ old: clipText(maskSecrets(e.old), DIFF_TEXT_MAX), new: clipText(maskSecrets(e.new), DIFF_TEXT_MAX) }));
+  return edits.length ? { file: file ?? '', edits } : undefined;
+}
+
+/** Linhas de um texto (sem o vazio final de uma quebra no fim). */
+function linesOf(s: string): string[] {
+  const parts = s.replace(/\r\n/g, '\n').split('\n');
+  if (parts.length && parts[parts.length - 1] === '') parts.pop();
+  return parts;
+}
+
+/** Linhas adicionadas/removidas de uma edição (ignora o trecho comum no começo e no fim). */
+function lineDelta(oldText: string, newText: string): { added: number; removed: number } {
+  const o = linesOf(oldText);
+  const n = linesOf(newText);
+  let head = 0;
+  while (head < o.length && head < n.length && o[head] === n[head]) head++;
+  let tail = 0;
+  while (tail < o.length - head && tail < n.length - head && o[o.length - 1 - tail] === n[n.length - 1 - tail]) tail++;
+  return { added: n.length - head - tail, removed: o.length - head - tail };
 }
 
 /** Tokens de um evento de hook (só quando algum dos quatro campos é número finito). */
@@ -96,6 +162,8 @@ export interface CursorEvent {
   childConversationId?: string;
   /** `agent_transcript_path` (`subagentStop`): o transcript do subagente, quando a IDE manda. */
   agentTranscriptPath?: string;
+  /** Diff de uma edição (`afterFileEdit`: `edits`), já mascarado/cortado no servidor (SC-06, SC-09). */
+  diff?: CursorDiff;
 }
 
 /**
@@ -110,8 +178,8 @@ export function parseCursorEvent(input: Record<string, unknown>): CursorEvent | 
   const workspaceRoot = firstStr(roots[0], input.workspace_root, input.workspaceRoot);
   const conversationId = firstStr(input.conversation_id, input.conversationId, input.session_id, input.sessionId);
   const cwd = firstStr(input.cwd, input.workspace);
-  const toolName = firstStr(input.tool_name, input.toolName);
-  const toolInput = firstRec(input.tool_input, input.toolInput);
+  let toolName = firstStr(input.tool_name, input.toolName);
+  let toolInput = firstRec(input.tool_input, input.toolInput);
   const command = firstStr(input.command, input.cmd);
   const transcriptPath = firstStr(input.transcript_path, input.transcriptPath);
   // Campos de subagente (`subagentStart`/`subagentStop`): o id do par, o papel, a tarefa e a conversa pai
@@ -124,6 +192,17 @@ export function parseCursorEvent(input: Record<string, unknown>): CursorEvent | 
   // (o `subagentStart` não traz o id da conversa do sub; só o Stop fecha a correlação).
   const childConversationId = firstStr(input.child_conversation_id, input.childConversationId);
   const agentTranscriptPath = firstStr(input.agent_transcript_path, input.agentTranscriptPath);
+  // Diff do `afterFileEdit` (T5): os `edits` chegam no topo do stdin (ou dentro do `tool_input`) e são mascarados/
+  // cortados AQUI (o hook só transporta). Sem `edits`, `diff` fica `undefined` (retrocompatível).
+  const rawEdits = Array.isArray(input.edits) ? input.edits : Array.isArray(toolInput?.edits) ? toolInput.edits : undefined;
+  const filePath = firstStr(input.file_path, input.filePath, input.path, toolInput?.file_path, toolInput?.path);
+  const diff = cursorDiff(rawEdits, filePath);
+  // O `afterFileEdit` traz `file_path`/`edits` no topo do stdin, fora do `tool_input`. Monta o input da edição e usa
+  // um nome de edição quando a IDE não manda `tool_name`, para a Activity sair com o resumo do diff (kind edit/write).
+  if (diff && name === 'afterFileEdit') {
+    if (!toolInput) toolInput = { file_path: diff.file, edits: rawEdits };
+    if (!toolName) toolName = 'StrReplace';
+  }
   // Campos de token (`stop`/`afterAgentResponse`): cada ausente/não numérico vale 0; sem nenhum campo útil,
   // `tokens` fica `undefined` (o acumulado não é tocado). Aliases camelCase cobrem variações do hook.
   const inputTok = num(input.input_tokens) ?? num(input.inputTokens);
@@ -143,6 +222,7 @@ export function parseCursorEvent(input: Record<string, unknown>): CursorEvent | 
   if (parentConversationId) event.parentConversationId = parentConversationId;
   if (childConversationId) event.childConversationId = childConversationId;
   if (agentTranscriptPath) event.agentTranscriptPath = agentTranscriptPath;
+  if (diff) event.diff = diff;
   if (inputTok !== undefined || outputTok !== undefined || cacheRead !== undefined || cacheWrite !== undefined) {
     event.tokens = { input: inputTok ?? 0, output: outputTok ?? 0, cacheRead: cacheRead ?? 0, cacheWrite: cacheWrite ?? 0 };
   }
@@ -159,7 +239,7 @@ export function parseCursorEvent(input: Record<string, unknown>): CursorEvent | 
  * delegate `Task`) e `Glob` com `glob_pattern` (o canonical do `describeTool` é `pattern`). As ferramentas
  * próprias do Cursor (`GetDynamicTools`, `AskQuestion`, `UpdateCurrentStep`) ganham tradução dedicada.
  */
-export function describeCursorTool(rawName: string, input: Rec): { desc: ActivityDescription; tool: string } {
+function describeCursorToolBase(rawName: string, input: Rec): { desc: ActivityDescription; tool: string } {
   if (rawName === 'Shell') {
     const command = firstStr(input.command, input.cmd) ?? '';
     return { desc: describeCommand(command, str(input.description)), tool: 'Bash' };
@@ -202,6 +282,43 @@ export function describeCursorTool(rawName: string, input: Rec): { desc: Activit
     return { desc: describeTool('Glob', { ...input, pattern: firstStr(input.pattern, input.glob_pattern) ?? '' }), tool: rawName };
   }
   return { desc: describeTool(rawName, input), tool: rawName };
+}
+
+/** Descrição de ferramenta do Cursor: a Activity (com o resumo do diff quando a edição o traz). */
+export type CursorToolDescription = ActivityDescription & { diff?: EditDiff };
+
+/**
+ * Resumo do diff (contagens `added`/`removed`) do input de uma ferramenta de edição, quando ele traz `edits`
+ * (hook/`MultiEdit`), `old_string`/`new_string` (`Edit`/`StrReplace`) ou o conteúdo escrito (`Write`).
+ */
+function diffSummary(rawName: string, input: Rec): EditDiff | undefined {
+  if (!EDIT_TOOLS.has(rawName)) return undefined;
+  let edits = editsFrom(input.edits);
+  if (!edits.length) {
+    const oldText = text(input.old_string);
+    const newText = text(input.new_string) ?? text(input.content) ?? text(input.contents) ?? text(input.new_source);
+    if (oldText !== undefined || newText !== undefined) edits = [{ old: oldText ?? '', new: newText ?? '' }];
+  }
+  if (!edits.length) return undefined;
+  let added = 0;
+  let removed = 0;
+  for (const e of edits) {
+    const d = lineDelta(e.old, e.new);
+    added += d.added;
+    removed += d.removed;
+  }
+  return { file: firstStr(input.file_path, input.filePath, input.path, input.notebook_path) ?? '', added, removed };
+}
+
+/**
+ * Traduz uma ferramenta do Cursor em uma Activity, anexando o resumo do diff (`EditDiff`) quando a ferramenta é
+ * uma edição e o input o traz. O resumo é aditivo: sem `edits`/`old_string`/`new_string`, o resultado é o de
+ * {@link describeCursorToolBase} (retrocompatível).
+ */
+export function describeCursorTool(rawName: string, input: Rec): { desc: CursorToolDescription; tool: string } {
+  const base = describeCursorToolBase(rawName, input);
+  const diff = diffSummary(rawName, input);
+  return { desc: diff ? { ...base.desc, diff } : base.desc, tool: base.tool };
 }
 
 /**

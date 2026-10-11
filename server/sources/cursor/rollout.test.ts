@@ -165,6 +165,27 @@ describe('parseCursorEvent', () => {
     expect(so?.childConversationId).toBeUndefined();
     expect(so?.agentTranscriptPath).toBeUndefined();
   });
+
+  it('afterFileEdit: os edits viram diff mascarado (o segredo não vaza)', () => {
+    const ev = parseCursorEvent({
+      hook_event_name: 'afterFileEdit',
+      conversation_id: 'c1',
+      file_path: '/p/.env',
+      edits: [{ old_string: '', new_string: 'API_KEY=sk-ant-abcdefghijklmnopqrstuvwxyz0123' }],
+    });
+    expect(ev?.diff).toEqual({ file: '/p/.env', edits: [{ old: '', new: 'API_KEY=***' }] });
+    // Sem `tool_name` da IDE, a edição vira input + nome de edição (a Activity sai com o resumo do diff).
+    expect(ev?.toolName).toBe('StrReplace');
+    expect(ev?.toolInput).toEqual({ file_path: '/p/.env', edits: [{ old_string: '', new_string: 'API_KEY=sk-ant-abcdefghijklmnopqrstuvwxyz0123' }] });
+  });
+
+  it('afterFileEdit: edits dentro do tool_input também viram diff; sem edits, diff fica undefined', () => {
+    const ev = parseCursorEvent({ hook_event_name: 'afterFileEdit', tool_input: { file_path: '/p/a.ts', edits: [{ old_string: 'a', new_string: 'b' }] } });
+    expect(ev?.diff).toEqual({ file: '/p/a.ts', edits: [{ old: 'a', new: 'b' }] });
+    expect(ev?.toolInput).toEqual({ file_path: '/p/a.ts', edits: [{ old_string: 'a', new_string: 'b' }] });
+    expect(parseCursorEvent({ hook_event_name: 'afterFileEdit', file_path: '/p/a.ts' })).not.toHaveProperty('diff');
+    expect(parseCursorEvent({ hook_event_name: 'stop' })).not.toHaveProperty('diff');
+  });
 });
 
 describe('describeCursorTool', () => {
@@ -186,8 +207,30 @@ describe('describeCursorTool', () => {
   });
 
   it('StrReplace (transcript) → describeTool Edit, mantendo o nome cru', () => {
-    const input = { path: '/p/a.ts', old_string: 'a', new_string: 'b' };
+    const input = { path: '/p/a.ts' };
     expect(describeCursorTool('StrReplace', input)).toEqual({ desc: describeTool('Edit', input), tool: 'StrReplace' });
+  });
+
+  it('edição (old_string/new_string) anexa o resumo do diff (added/removed)', () => {
+    const { desc, tool } = describeCursorTool('StrReplace', { path: '/p/a.ts', old_string: 'a\nb', new_string: 'a\nc' });
+    expect(tool).toBe('StrReplace');
+    expect(desc.diff).toEqual({ file: '/p/a.ts', added: 1, removed: 1 });
+  });
+
+  it('MultiEdit soma o diff das edições', () => {
+    const { desc } = describeCursorTool('MultiEdit', { file_path: '/p/b.ts', edits: [{ old_string: 'a', new_string: 'b' }, { old_string: 'c\nd', new_string: 'c' }] });
+    expect(desc.diff).toEqual({ file: '/p/b.ts', added: 1, removed: 2 });
+  });
+
+  it('Write conta as linhas escritas como adicionadas', () => {
+    const { desc } = describeCursorTool('Write', { file_path: '/p/c.ts', content: 'x\ny' });
+    expect(desc.diff).toEqual({ file: '/p/c.ts', added: 2, removed: 0 });
+  });
+
+  it('sem edição, o resumo do diff não aparece (retrocompatível)', () => {
+    const { desc } = describeCursorTool('StrReplace', { path: '/p/a.ts' });
+    expect(desc).not.toHaveProperty('diff');
+    expect(desc).toEqual(describeTool('Edit', { path: '/p/a.ts' }));
   });
 
   it('Glob do transcript usa glob_pattern (aliases) e cita o padrão', () => {

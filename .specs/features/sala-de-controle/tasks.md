@@ -276,11 +276,11 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] Um payload com `edits` produz `Activity.diff` (arquivo + `added`/`removed`) (SC-06)
-- [ ] Segredo sintético no diff sai mascarado (SC-09)
-- [ ] Payload sem `edits` segue como hoje
-- [ ] Gate check passes: `npx vitest run server/sources/cursor/rollout.test.ts`
-- [ ] Test count: novo caso de diff + máscara verde (sem remoção de teste)
+- [x] Um payload com `edits` produz `Activity.diff` (arquivo + `added`/`removed`) (SC-06)
+- [x] Segredo sintético no diff sai mascarado (SC-09)
+- [x] Payload sem `edits` segue como hoje
+- [x] Gate check passes: `npx vitest run server/sources/cursor/rollout.test.ts`
+- [x] Test count: novo caso de diff + máscara verde (sem remoção de teste)
 
 **Tests**: unit
 **Gate**: quick
