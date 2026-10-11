@@ -108,6 +108,42 @@ describe('parseCursorEvent', () => {
       cacheWrite: 0,
     });
   });
+
+  it('lê os campos de subagente (subagent_id/subagent_type/task/parent_conversation_id)', () => {
+    expect(
+      parseCursorEvent({
+        hook_event_name: 'subagentStart',
+        conversation_id: 'conv-1',
+        subagent_id: 'sa-9',
+        subagent_type: 'explore',
+        task: 'Mapear o repositório',
+        parent_conversation_id: 'conv-1',
+      }),
+    ).toEqual({
+      name: 'subagentStart',
+      conversationId: 'conv-1',
+      subagentId: 'sa-9',
+      subagentType: 'explore',
+      subagentTask: 'Mapear o repositório',
+      parentConversationId: 'conv-1',
+    });
+  });
+
+  it('lê aliases camelCase dos campos de subagente; ausentes viram undefined', () => {
+    expect(
+      parseCursorEvent({
+        hook_event_name: 'subagentStop',
+        subagentId: 'sa-9',
+        subagentType: 'explore',
+        parentConversationId: 'conv-1',
+      }),
+    ).toEqual({ name: 'subagentStop', subagentId: 'sa-9', subagentType: 'explore', parentConversationId: 'conv-1' });
+    const so = parseCursorEvent({ hook_event_name: 'subagentStop', subagent_id: 'sa-1' });
+    expect(so?.subagentTask).toBeUndefined();
+    expect(so?.subagentType).toBeUndefined();
+    expect(so?.parentConversationId).toBeUndefined();
+    expect(parseCursorEvent({ hook_event_name: 'subagentStart' })).toEqual({ name: 'subagentStart' });
+  });
 });
 
 describe('describeCursorTool', () => {
@@ -202,6 +238,8 @@ describe('statusBorder', () => {
     expect(statusBorder('afterAgentThought')).toEqual({ status: 'working' });
     expect(statusBorder('beforeShellExecution')).toEqual({ status: 'shell' });
     expect(statusBorder('afterShellExecution')).toEqual({ status: 'working' });
+    expect(statusBorder('subagentStart')).toEqual({ status: 'working' });
+    expect(statusBorder('subagentStop')).toEqual({ status: 'idle' });
   });
 
   it('desconhecidos (inclui sessionEnd) → undefined', () => {

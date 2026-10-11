@@ -84,6 +84,14 @@ export interface CursorEvent {
   transcriptPath?: string;
   /** Tokens do turno (`stop`/`afterAgentResponse`); ausente quando o evento não traz nenhum campo. */
   tokens?: CursorTokens;
+  /** `subagent_id` (`subagentStart`/`subagentStop`): o id estável do par Start↔Stop. */
+  subagentId?: string;
+  /** `subagent_type`: o papel do subagente. */
+  subagentType?: string;
+  /** `task`: o título/objetivo do subagente. */
+  subagentTask?: string;
+  /** `parent_conversation_id`: a conversa pai (senão vale o `conversation_id`). */
+  parentConversationId?: string;
 }
 
 /**
@@ -102,6 +110,12 @@ export function parseCursorEvent(input: Record<string, unknown>): CursorEvent | 
   const toolInput = firstRec(input.tool_input, input.toolInput);
   const command = firstStr(input.command, input.cmd);
   const transcriptPath = firstStr(input.transcript_path, input.transcriptPath);
+  // Campos de subagente (`subagentStart`/`subagentStop`): o id do par, o papel, a tarefa e a conversa pai
+  // (aliases defensivos). Ausentes ficam `undefined` (não inventamos parentesco).
+  const subagentId = firstStr(input.subagent_id, input.subagentId);
+  const subagentType = firstStr(input.subagent_type, input.subagentType);
+  const subagentTask = firstStr(input.task);
+  const parentConversationId = firstStr(input.parent_conversation_id, input.parentConversationId);
   // Campos de token (`stop`/`afterAgentResponse`): cada ausente/não numérico vale 0; sem nenhum campo útil,
   // `tokens` fica `undefined` (o acumulado não é tocado). Aliases camelCase cobrem variações do hook.
   const inputTok = num(input.input_tokens) ?? num(input.inputTokens);
@@ -115,6 +129,10 @@ export function parseCursorEvent(input: Record<string, unknown>): CursorEvent | 
   if (toolInput) event.toolInput = toolInput;
   if (command) event.command = command;
   if (transcriptPath) event.transcriptPath = transcriptPath;
+  if (subagentId) event.subagentId = subagentId;
+  if (subagentType) event.subagentType = subagentType;
+  if (subagentTask) event.subagentTask = subagentTask;
+  if (parentConversationId) event.parentConversationId = parentConversationId;
   if (inputTok !== undefined || outputTok !== undefined || cacheRead !== undefined || cacheWrite !== undefined) {
     event.tokens = { input: inputTok ?? 0, output: outputTok ?? 0, cacheRead: cacheRead ?? 0, cacheWrite: cacheWrite ?? 0 };
   }
@@ -199,7 +217,10 @@ export function statusBorder(event: string): { status: AgentStatus; waitingFor?:
     case 'beforeShellExecution':
       return { status: 'shell' };
     case 'stop':
+    case 'subagentStop':
       return { status: 'idle' };
+    case 'subagentStart':
+      return { status: 'working' };
     default:
       return undefined;
   }

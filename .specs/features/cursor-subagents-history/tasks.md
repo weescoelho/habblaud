@@ -89,12 +89,12 @@ T8
 
 **Done when**:
 
-- [ ] um evento com `subagent_id`/`subagent_type`/`task`/`parent_conversation_id` normaliza `subagentId`/`subagentType`/`subagentTask`/`parentConversationId`
-- [ ] aliases camelCase (`subagentId`, `subagentType`, `parentConversationId`) também são lidos; ausentes viram `undefined` (sem lançar)
-- [ ] `statusBorder('subagentStart')` → `working`; `statusBorder('subagentStop')` → `idle`; as bordas atuais (`sessionStart`, `stop`, `beforeShellExecution`…) não mudam
-- [ ] `server/sources/cursor/rollout.test.ts` cobre os casos acima
-- [ ] Gate check passes: `npx vitest run server/sources/cursor/rollout.test.ts`
-- [ ] Test count: 8+ casos passam (sem deleções silenciosas)
+- [x] um evento com `subagent_id`/`subagent_type`/`task`/`parent_conversation_id` normaliza `subagentId`/`subagentType`/`subagentTask`/`parentConversationId`
+- [x] aliases camelCase (`subagentId`, `subagentType`, `parentConversationId`) também são lidos; ausentes viram `undefined` (sem lançar)
+- [x] `statusBorder('subagentStart')` → `working`; `statusBorder('subagentStop')` → `idle`; as bordas atuais (`sessionStart`, `stop`, `beforeShellExecution`…) não mudam
+- [x] `server/sources/cursor/rollout.test.ts` cobre os casos acima
+- [x] Gate check passes: `npx vitest run server/sources/cursor/rollout.test.ts`
+- [x] Test count: 8+ casos passam (sem deleções silenciosas)
 
 **Tests**: unit
 **Gate**: quick
