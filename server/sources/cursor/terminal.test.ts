@@ -28,6 +28,15 @@ describe('terminal do Cursor: prompt e resposta', () => {
     expect(out).toEqual([{ kind: 'assistant', id: 'l1:0', at: expect.any(Number), text: 'Feito!' }]);
   });
 
+  it('usa timestamp/ts da linha como at, senão o último conhecido (CTRANS-08)', () => {
+    const iso = '2026-10-10T14:03:00.000Z';
+    const out = read(
+      line({ role: 'user', timestamp: iso, message: { content: [text('oi')] } }),
+      line({ type: 'turn_ended', ts: 1710000000000, status: 'success' }),
+    );
+    expect(out.map((e) => e.at)).toEqual([Date.parse(iso), 1710000000000]);
+  });
+
   it('a mesma linha com vários blocos tool_use gera uma entrada por bloco (CTRANS-05, edge case)', () => {
     const out = read(msg('assistant', [text('Vou ler e rodar'), tool('Read', { path: 'a.ts' }), tool('Shell', { command: 'ls' })]));
     expect(out.map((e) => e.kind)).toEqual(['assistant', 'tool', 'tool']);

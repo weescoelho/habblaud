@@ -237,7 +237,7 @@ describe('fonte do Cursor: presença por hooks', () => {
     ctx.advance(10);
     ctx.hook(ev('preToolUse', { tool_name: 'UpdateCurrentStep', tool_input: { current_step: 'Rodando os testes' } }));
     expect(ctx.agent()?.activity).toMatchObject({ kind: 'plan', tool: 'UpdateCurrentStep' });
-    expect(ctx.agent()?.activity?.text).toContain('Rodando os testes');
+    expect(ctx.agent()?.activity?.text).toBe('Etapa: Rodando os testes');
     expect(ctx.agent()?.tasks).toEqual([]);
   });
 

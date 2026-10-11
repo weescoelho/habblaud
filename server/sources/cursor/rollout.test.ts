@@ -174,7 +174,8 @@ describe('describeCursorTool', () => {
     const r = describeCursorTool('UpdateCurrentStep', { current_step: 'Rodando os testes' });
     expect(r.tool).toBe('UpdateCurrentStep');
     expect(r.desc.kind).toBe('plan');
-    expect(r.desc.text).toContain('Rodando os testes');
+    expect(r.desc.text).toBe('Etapa: Rodando os testes');
+    expect(r.desc.detail).toBe('Rodando os testes');
   });
 
   it('CallDynamicTool com toolName Task vira delegate; sem Task segue mcp__', () => {
