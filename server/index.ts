@@ -23,6 +23,7 @@ import { RoomAliases } from './model/room-aliases';
 import { openMainAgent, SessionHistory } from './sources/history';
 import { HistorySet, SourceSet } from './sources/source';
 import { createPermissionRoutes } from './permissions/http';
+import { writeCursorRule } from './permissions/cursor-rules';
 import { PermissionRegistry } from './permissions/registry';
 import { codexAccountOf } from './codex/http';
 import { createCodexQueueRunner, findCodexBin } from './messages/codex';
@@ -136,6 +137,11 @@ const permissions = config.terminal
       transcriptPathOf: (id) => claude.transcriptPathOf(id),
       // Pedidos do hook do Codex: a conta pela pasta CODEX_HOME que ele manda.
       codexAccount: (account, codexHome) => codexAccountOf(accounts.entriesOf('codex'), account, codexHome),
+      // "Sempre permitir" do Cursor: grava a regra local que o hook dele passa a aplicar (sem `updatedPermissions`).
+      persistCursorRule: (rule) => {
+        const r = writeCursorRule(config.home, rule);
+        if (!r.ok) log.warnOnce(`cursor-rule:${r.error}`, `Não consegui gravar a regra local do Cursor: ${r.error}`);
+      },
       demoDecide: (id, d) => office.decideDemoPermission(id, d),
       demoDetail: (id) => office.demoPermission(id),
     })
