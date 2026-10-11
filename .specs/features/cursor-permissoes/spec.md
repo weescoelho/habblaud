@@ -170,7 +170,7 @@ para medir se o travamento caiu.
 
 Edge cases are usually unwanted-behavior (IF/THEN) or boundary (WHEN) criteria:
 
-- IF o evento de decisão chega sem comando (`beforeShellExecution` sem `command`) THEN o hook SHALL seguir o fluxo anterior (registrar e esperar), sem lançar.
+- IF o evento de decisão chega sem comando (`beforeShellExecution` sem `command` e sem `tool_name`) THEN o hook SHALL não derivar sujeito nem regra e SHALL registrar como observação, sem lançar — nunca inventa um comando. (Sem conversa ou ferramenta o pedido nunca é registrado, como sempre foi.)
 - IF uma regra usa um padrão (regex) inválido THEN o hook SHALL descartá-la e registrar o motivo, sem interromper o fluxo.
 - WHEN duas regras casam (`allow` e `deny`) THEN o hook SHALL aplicar `deny`.
 - IF o arquivo de política é um JSON malformado THEN o hook SHALL tratá-lo como ausente e seguir o fluxo anterior.
