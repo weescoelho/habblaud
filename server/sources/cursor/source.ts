@@ -25,6 +25,13 @@ export const STALE_PRESENCE_MS = 5 * 60_000;
 /** Sala padrão quando o evento não diz o projeto (sem `workspace_roots` nem `cwd`). */
 export const DEFAULT_ROOM = 'cursor';
 const MAIN_ROLE = 'Agente principal (Cursor)';
+const SUB_ROLE = 'Subagente (Cursor)';
+
+/** Papel do subagente a partir do `subagent_type` (capitalizado; sem tipo, o padrão). */
+function roleOf(raw: string | undefined): string {
+  const r = raw?.trim();
+  return r ? `${r[0].toUpperCase()}${r.slice(1)}` : SUB_ROLE;
+}
 
 /** Eventos do Cursor tratados pela fonte; qualquer outro faz `applyHookEvent` devolver false. */
 const HOOK_EVENTS = new Set([
@@ -41,6 +48,8 @@ const HOOK_EVENTS = new Set([
   'afterFileEdit',
   'afterAgentResponse',
   'afterAgentThought',
+  'subagentStart',
+  'subagentStop',
   'stop',
   'sessionEnd',
 ]);
@@ -56,11 +65,15 @@ export interface CursorSourceOptions {
   pollMs?: number;
 }
 
-/** Estado interno de um agente Cursor (um por conversation_id). */
+/** Estado interno de um agente Cursor (um por conversation_id ou subagent_id). */
 interface CursorTracker {
   key: string;
   conversationId: string;
   account: string;
+  /** 'main' pela conversa; 'sub' criado por `subagentStart`. */
+  kind: 'main' | 'sub';
+  /** Chave do agente pai (só em 'sub'): `<conta>:<parent_conversation_id>`. */
+  parentId?: string;
   /** Sala (`workspace_roots[0]` ou `cwd`), quando o evento a diz. */
   cwd?: string;
   status: AgentStatus;
@@ -71,6 +84,8 @@ interface CursorTracker {
   lastHookAt: number;
   startedAt: number;
   inOffice: boolean;
+  /** O subagente já entregou (`done`). */
+  subDone?: boolean;
   /** Arquivo do transcript da conversa (só gravado quando um evento traz caminho não vazio; nunca limpo). */
   transcriptPath?: string;
   /** Tokens acumulados dos eventos de hook (refletidos no Office). */
@@ -156,6 +171,7 @@ export class CursorSource implements AgentSource, CursorLive {
   private hookEvent(input: Record<string, unknown>): boolean {
     const event = parseCursorEvent(input);
     if (!event || !HOOK_EVENTS.has(event.name)) return false;
+    if (event.name === 'subagentStart' || event.name === 'subagentStop') return this.subagentEvent(event);
     const now = this.now();
     // Sem conversation_id (evento incompleto), a conta única usa a sala padrão como identidade: um só agente.
     const conversationId = event.conversationId ?? DEFAULT_ROOM;
@@ -166,6 +182,8 @@ export class CursorSource implements AgentSource, CursorLive {
       if (!t) return false;
       this.leave(t);
       this.trackers.delete(key);
+      // Os subagentes filhos saem junto (o closeMain já os encerra no Office).
+      for (const [k, s] of [...this.trackers]) if (s.parentId === key) this.trackers.delete(k);
       return true;
     }
 
@@ -176,6 +194,7 @@ export class CursorSource implements AgentSource, CursorLive {
         key,
         conversationId,
         account: this.accountId,
+        kind: 'main',
         status: 'idle',
         statusAt: 0,
         lastHookAt: now,
@@ -207,6 +226,63 @@ export class CursorSource implements AgentSource, CursorLive {
     return true;
   }
 
+  /** Eventos de subagente (`subagentStart`/`subagentStop`): um par por `subagent_id`, ligado ao agente pai. */
+  private subagentEvent(event: CursorEvent): boolean {
+    const subagentId = event.subagentId;
+    if (!subagentId) return false; // sem id não há par: degrada (não inventa parentesco)
+    const key = `${this.accountId}:s:${subagentId}`;
+    const now = this.now();
+
+    if (event.name === 'subagentStop') {
+      // Entrega o sub do par; um Stop sem Start visto antes é no-op.
+      const t = this.trackers.get(key);
+      if (t) {
+        this.leave(t);
+        this.trackers.delete(key);
+      }
+      return true;
+    }
+
+    // subagentStart: o pai é o `parent_conversation_id` (senão o `conversation_id`) já conhecido.
+    const parentConversationId = event.parentConversationId ?? event.conversationId;
+    if (!parentConversationId) return false;
+    const parentId = `${this.accountId}:${parentConversationId}`;
+    const parent = this.trackers.get(parentId);
+    if (!parent) return false; // pai desconhecido: degrada
+    this.reconcile(parent); // o addSub só cria com o pai no escritório
+
+    let t = this.trackers.get(key);
+    if (t) {
+      t.lastHookAt = now;
+    } else {
+      t = {
+        key,
+        conversationId: subagentId,
+        account: this.accountId,
+        kind: 'sub',
+        parentId,
+        status: 'working',
+        statusAt: now,
+        lastHookAt: now,
+        startedAt: now,
+        inOffice: false,
+        stats: { toolCalls: 0, tokensIn: 0, tokensOut: 0, subagents: 0 },
+      };
+      this.trackers.set(key, t);
+    }
+    this.opts.office.addSub({
+      id: key,
+      parentId,
+      sessionId: subagentId,
+      role: roleOf(event.subagentType),
+      title: event.subagentTask,
+      background: false,
+      startedAt: t.startedAt,
+    });
+    t.inOffice = this.opts.office.has(key);
+    return true;
+  }
+
   /** Traz o agente para o escritório (sala `workspace_roots[0]`/`cwd` ou a padrão) com o status atual. */
   private reconcile(t: CursorTracker): void {
     if (t.inOffice) return;
@@ -226,10 +302,15 @@ export class CursorSource implements AgentSource, CursorLive {
     if (t.inOffice) office.setStatus(t.key, t.status, t.waitingFor);
   }
 
-  /** Sai do escritório (encerra a sessão). */
+  /** Sai do escritório: o principal encerra (`closeMain`, em cascata); o subagente entrega (`completeSub`). */
   private leave(t: CursorTracker): void {
     if (!t.inOffice) return;
-    this.opts.office.closeMain(t.key);
+    if (t.kind === 'sub') {
+      this.opts.office.completeSub(t.key);
+      t.subDone = true;
+    } else {
+      this.opts.office.closeMain(t.key);
+    }
     t.inOffice = false;
   }
 

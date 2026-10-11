@@ -118,14 +118,14 @@ T8
 
 **Done when**:
 
-- [ ] `subagentStart` com `subagent_id` e pai conhecido cria um agente `kind:'sub'`, `parentId` do principal, `role` do `subagent_type` e `title` do `task`, `status:'working'`
-- [ ] `subagentStop` casando o `subagent_id` completa o sub (`status:'done'`), sem tocar o principal
-- [ ] `subagentStop` sem `subagentStart` (órfão) e `subagentStart` sem `subagent_id`/pai são no-op (nenhum sub quebrado), sem lançar e com a sessão principal intacta
-- [ ] `subagentStart` sem `subagentStop` é completado no `poll()` depois de expirar a presença (não fica preso em `working`)
-- [ ] `sessionEnd` do principal encerra os subs filhos (via `closeMain`), e nenhum tracker de sub fica pendurado
-- [ ] `server/sources/cursor/source.test.ts` cobre os casos acima
-- [ ] Gate check passes: `npx vitest run server/sources/cursor/source.test.ts`
-- [ ] Test count: 20+ casos passam (sem deleções silenciosas)
+- [x] `subagentStart` com `subagent_id` e pai conhecido cria um agente `kind:'sub'`, `parentId` do principal, `role` do `subagent_type` e `title` do `task`, `status:'working'`
+- [x] `subagentStop` casando o `subagent_id` completa o sub (`status:'done'`), sem tocar o principal
+- [x] `subagentStop` sem `subagentStart` (órfão) e `subagentStart` sem `subagent_id`/pai são no-op (nenhum sub quebrado), sem lançar e com a sessão principal intacta
+- [x] `subagentStart` sem `subagentStop` é completado no `poll()` depois de expirar a presença (não fica preso em `working`)
+- [x] `sessionEnd` do principal encerra os subs filhos (via `closeMain`), e nenhum tracker de sub fica pendurado
+- [x] `server/sources/cursor/source.test.ts` cobre os casos acima
+- [x] Gate check passes: `npx vitest run server/sources/cursor/source.test.ts`
+- [x] Test count: 20+ casos passam (sem deleções silenciosas)
 
 **Tests**: unit
 **Gate**: quick

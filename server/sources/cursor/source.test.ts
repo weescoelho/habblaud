@@ -260,3 +260,95 @@ describe('fonte do Cursor: presença por hooks', () => {
     expect(ctx.accounts.entriesOf('cursor').map((e) => e.id)).toEqual(['cursor']);
   });
 });
+
+describe('fonte do Cursor: subagentes por hook', () => {
+  const sub = (extra: Record<string, unknown>) => ({ hook_event_name: 'subagentStart', conversation_id: 'c1', ...extra });
+
+  it('subagentStart cria o sub no escritório (parentId, role, title, working); subagentStop entrega', () => {
+    const ctx = setup();
+    ctx.hook(ev('sessionStart', { conversation_id: 'c1' }));
+    expect(
+      ctx.hook(
+        sub({
+          parent_conversation_id: 'c1',
+          subagent_id: 'sa-1',
+          subagent_type: 'explore',
+          task: 'Mapear o repositório',
+        }),
+      ),
+    ).toBe(true);
+    expect(ctx.agent('cursor:s:sa-1')).toMatchObject({
+      kind: 'sub',
+      parentId: 'cursor:c1',
+      account: 'cursor',
+      role: 'Explore',
+      title: 'Mapear o repositório',
+      status: 'working',
+    });
+    // O principal segue intacto (o evento de subagente não mexe no status dele).
+    expect(ctx.agent('cursor:c1')).toMatchObject({ kind: 'main', status: 'idle' });
+
+    expect(ctx.hook({ hook_event_name: 'subagentStop', conversation_id: 'c9', subagent_id: 'sa-1' })).toBe(true);
+    expect(ctx.agent('cursor:s:sa-1')?.status).toBe('done');
+    expect(ctx.agent('cursor:c1')?.status).toBe('idle');
+  });
+
+  it('sem subagent_type usa o papel padrão; sem parent_conversation_id usa o conversation_id do evento', () => {
+    const ctx = setup();
+    ctx.hook(ev('sessionStart', { conversation_id: 'c1' }));
+    ctx.hook(sub({ subagent_id: 'sa-2' }));
+    expect(ctx.agent('cursor:s:sa-2')).toMatchObject({ parentId: 'cursor:c1', role: 'Subagente (Cursor)' });
+    expect(ctx.agent('cursor:s:sa-2')?.title).toBeUndefined();
+  });
+
+  it('subagentStop órfão é no-op: nada é criado, sem lançar, principal intacto', () => {
+    const ctx = setup();
+    ctx.hook(ev('sessionStart'));
+    expect(ctx.hook({ hook_event_name: 'subagentStop', conversation_id: 'c1', subagent_id: 'ninguem' })).toBe(true);
+    expect(ctx.agent('cursor:s:ninguem')).toBeUndefined();
+    expect(ctx.agent('cursor:c1')?.status).toBe('idle');
+  });
+
+  it('subagentStart sem id, sem pai ou com pai desconhecido degrada (nenhum sub quebrado)', () => {
+    const ctx = setup();
+    ctx.hook(ev('sessionStart'));
+    expect(ctx.hook({ hook_event_name: 'subagentStart', conversation_id: 'c1' })).toBe(false); // sem id
+    expect(ctx.hook({ hook_event_name: 'subagentStart', subagent_id: 'sa-4' })).toBe(false); // sem pai
+    expect(ctx.hook({ hook_event_name: 'subagentStart', subagent_id: 'sa-5', parent_conversation_id: 'nao-existe' })).toBe(false); // pai desconhecido
+    expect(ctx.agent('cursor:s:sa-4')).toBeUndefined();
+    expect(ctx.agent('cursor:s:sa-5')).toBeUndefined();
+    expect(ctx.agent('cursor:c1')?.status).toBe('idle');
+  });
+
+  it('subagentStart sem subagentStop é completado no poll quando a presença expira', () => {
+    const ctx = setup();
+    ctx.hook(ev('sessionStart'));
+    ctx.hook(sub({ subagent_id: 'sa-6' }));
+    // O principal segue recebendo eventos (fica fresco); o sub, não.
+    ctx.advance(4 * 60_000);
+    ctx.hook(ev('preToolUse', { tool_name: 'Read', tool_input: { file_path: '/a.ts' } }));
+    ctx.advance(2 * 60_000);
+    ctx.poll();
+    expect(ctx.agent('cursor:s:sa-6')?.status).toBe('done');
+    expect(ctx.agent('cursor:c1')?.status).toBe('working'); // o principal não foi fechado
+  });
+
+  it('sessionEnd do principal encerra os subs filhos', () => {
+    const ctx = setup();
+    ctx.hook(ev('sessionStart'));
+    ctx.hook(sub({ subagent_id: 'sa-7' }));
+    expect(ctx.hook(ev('sessionEnd'))).toBe(true);
+    expect(ctx.agent('cursor:c1')?.status).toBe('offline');
+    expect(ctx.agent('cursor:s:sa-7')?.status).toBe('done');
+  });
+
+  it('um novo subagentStart do mesmo id reativa um sub já entregue', () => {
+    const ctx = setup();
+    ctx.hook(ev('sessionStart'));
+    ctx.hook(sub({ subagent_id: 'sa-8', task: 'Tarefa A' }));
+    ctx.hook({ hook_event_name: 'subagentStop', conversation_id: 'c1', subagent_id: 'sa-8' });
+    expect(ctx.agent('cursor:s:sa-8')?.status).toBe('done');
+    ctx.hook(sub({ subagent_id: 'sa-8', task: 'Tarefa A de novo' }));
+    expect(ctx.agent('cursor:s:sa-8')?.status).toBe('working');
+  });
+});
