@@ -15,15 +15,15 @@ quando realmente precisa de você**.
 
 ## Goals
 
-- [ ] Reduzir os eventos que **pedem decisão** por padrão (só Shell/MCP), mantendo o restante como
+- [x] Reduzir os eventos que **pedem decisão** por padrão (só Shell/MCP), mantendo o restante como
       observação — o agente deixa de travar em `preToolUse`/`beforeReadFile`.
-- [ ] Oferecer regras locais "sempre permitir" (política consultada pelo hook) que respondem
+- [x] Oferecer regras locais "sempre permitir" (política consultada pelo hook) que respondem
       `allow`/`deny` na hora, **sem** contatar o escritório nem bloquear.
-- [ ] Persistir a regra quando o usuário escolhe "permitir sempre" no escritório (emula o
+- [x] Persistir a regra quando o usuário escolhe "permitir sempre" no escritório (emula o
       `updatedPermissions` que o Cursor não tem).
-- [ ] Documentar e verificar a camada base: auto-run/allowlist nativo do Cursor + status dos eventos
+- [x] Documentar e verificar a camada base: auto-run/allowlist nativo do Cursor + status dos eventos
       de decisão e regras locais.
-- [ ] Fechar tudo com validação determinística (vitest) do que não exige a IDE do Cursor.
+- [x] Fechar tudo com validação determinística (vitest) do que não exige a IDE do Cursor.
 
 ## Out of Scope
 
@@ -185,25 +185,25 @@ Each requirement gets a unique ID for tracking across design, tasks, and validat
 
 | Requirement ID | Story                           | Phase  | Status  |
 | -------------- | ------------------------------- | ------ | ------- |
-| CPERM-01       | P1: Decidir só o que importa    | Design | Pending |
-| CPERM-02       | P1: Decidir só o que importa    | Design | Pending |
-| CPERM-03       | P1: Decidir só o que importa    | Design | Pending |
-| CPERM-04       | P1: Decidir só o que importa    | Design | Pending |
-| CPERM-05       | P1: Regras locais (allowlist)   | Design | Pending |
-| CPERM-06       | P1: Regras locais (allowlist)   | Design | Pending |
-| CPERM-07       | P1: Regras locais (allowlist)   | Design | Pending |
-| CPERM-08       | P1: Regras locais (allowlist)   | Design | Pending |
-| CPERM-09       | P1: Regras locais (allowlist)   | Design | Pending |
-| CPERM-10       | P2: "Permitir sempre"           | Design | Pending |
-| CPERM-11       | P2: "Permitir sempre"           | Design | Pending |
-| CPERM-12       | P2: "Permitir sempre"           | Design | Pending |
-| CPERM-13       | P2: "Permitir sempre"           | Design | Pending |
-| CPERM-14       | P2: "Permitir sempre"           | Design | Pending |
-| CPERM-15       | P2: Camada base (auto-run)      | Design | Pending |
-| CPERM-16       | P2: Camada base (auto-run)      | Design | Pending |
-| CPERM-17       | P2: Camada base (auto-run)      | Design | Pending |
-| CPERM-18       | P3: Observabilidade             | Design | Pending |
-| CPERM-19       | P3: Observabilidade             | Design | Pending |
+| CPERM-01       | P1: Decidir só o que importa    | Design | Implementing |
+| CPERM-02       | P1: Decidir só o que importa    | Design | Implementing |
+| CPERM-03       | P1: Decidir só o que importa    | Design | Implementing |
+| CPERM-04       | P1: Decidir só o que importa    | Design | Implementing |
+| CPERM-05       | P1: Regras locais (allowlist)   | Design | Implementing |
+| CPERM-06       | P1: Regras locais (allowlist)   | Design | Implementing |
+| CPERM-07       | P1: Regras locais (allowlist)   | Design | Implementing |
+| CPERM-08       | P1: Regras locais (allowlist)   | Design | Implementing |
+| CPERM-09       | P1: Regras locais (allowlist)   | Design | Implementing |
+| CPERM-10       | P2: "Permitir sempre"           | Design | Implementing |
+| CPERM-11       | P2: "Permitir sempre"           | Design | Implementing |
+| CPERM-12       | P2: "Permitir sempre"           | Design | Implementing |
+| CPERM-13       | P2: "Permitir sempre"           | Design | Implementing |
+| CPERM-14       | P2: "Permitir sempre"           | Design | Implementing |
+| CPERM-15       | P2: Camada base (auto-run)      | Design | Implementing |
+| CPERM-16       | P2: Camada base (auto-run)      | Design | Implementing |
+| CPERM-17       | P2: Camada base (auto-run)      | Design | Implementing |
+| CPERM-18       | P3: Observabilidade             | Design | Implementing |
+| CPERM-19       | P3: Observabilidade             | Design | Implementing |
 
 **ID format:** `[CATEGORY]-[NUMBER]` (e.g., `AUTH-01`, `CART-03`, `NOTIF-02`)
 
@@ -217,8 +217,8 @@ Each requirement gets a unique ID for tracking across design, tasks, and validat
 
 How we know the feature is successful:
 
-- [ ] Um `preToolUse`/`beforeReadFile` do Cursor **não** gera pedido de decisão nem bloqueio por padrão (só observação).
-- [ ] Um comando coberto por regra local `allow`/`deny` é decidido pelo hook em `< 100 ms`, sem entrar no escritório.
-- [ ] "Permitir sempre" no escritório grava a regra e o próximo pedido idêntico é aprovado pelo hook sem novo pedido.
-- [ ] `codex` permanece `unsupported` para "sempre permitir" (sem regressão).
-- [ ] Gate verde (`typecheck` + `vitest` + `build`), sem regressão das suítes existentes.
+- [x] Um `preToolUse`/`beforeReadFile` do Cursor **não** gera pedido de decisão nem bloqueio por padrão (só observação).
+- [x] Um comando coberto por regra local `allow`/`deny` é decidido pelo hook em `< 100 ms`, sem entrar no escritório.
+- [x] "Permitir sempre" no escritório grava a regra e o próximo pedido idêntico é aprovado pelo hook sem novo pedido.
+- [x] `codex` permanece `unsupported` para "sempre permitir" (sem regressão).
+- [x] Gate verde (`typecheck` + `vitest` + `build`), sem regressão das suítes existentes.

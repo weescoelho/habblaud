@@ -10,7 +10,7 @@ Implement these tasks with the `tlc-spec-driven` skill: **activate it by name an
 
 **Design**: `.specs/features/cursor-permissoes/design.md`
 **Spec**: `.specs/features/cursor-permissoes/spec.md`
-**Status**: Draft
+**Status**: Implementing
 
 ---
 
@@ -91,12 +91,12 @@ T8 → T9
 
 **Done when**:
 
-- [ ] `decisionEventsOf` devolve `{beforeShellExecution, beforeMCPExecution}` sem config e o array de `decisionEvents` quando ele é válido (nomes desconhecidos descartados; vazio = padrão)
-- [ ] `matchRule` casa por ferramenta + sujeito (`Shell`→`command`, `Read`→`file_path`, MCP→nome, resto→JSON), aplica `deny` > `allow`, ignora regex inválida e regra malformada
-- [ ] `deriveRule` devolve a regra de prefixo ancorado (`^…(\s|$)`) e `undefined` sem sujeito; `ruleText` gera `Shell(npm test)`
-- [ ] `server/test/cursor-policy.test.ts` cobre: padrão de eventos; override por config; allow; deny; 2 regras → deny; regex inválida; política ausente; `deriveRule` com e sem sujeito
-- [ ] Gate check passes: `npx vitest run server/test/cursor-policy.test.ts`
-- [ ] Test count: 8+ casos passam (sem deleções silenciosas)
+- [x] `decisionEventsOf` devolve `{beforeShellExecution, beforeMCPExecution}` sem config e o array de `decisionEvents` quando ele é válido (nomes desconhecidos descartados; vazio = padrão)
+- [x] `matchRule` casa por ferramenta + sujeito (`Shell`→`command`, `Read`→`file_path`, MCP→nome, resto→JSON), aplica `deny` > `allow`, ignora regex inválida e regra malformada
+- [x] `deriveRule` devolve a regra de prefixo ancorado (`^…(\s|$)`) e `undefined` sem sujeito; `ruleText` gera `Shell(npm test)`
+- [x] `server/test/cursor-policy.test.ts` cobre: padrão de eventos; override por config; allow; deny; 2 regras → deny; regex inválida; política ausente; `deriveRule` com e sem sujeito
+- [x] Gate check passes: `npx vitest run server/test/cursor-policy.test.ts`
+- [x] Test count: 8+ casos passam (sem deleções silenciosas)
 
 **Tests**: unit
 **Gate**: quick
@@ -120,13 +120,13 @@ T8 → T9
 
 **Done when**:
 
-- [ ] `preToolUse`/`beforeReadFile` (observação) só geram `POST /api/cursor/events` — nenhum `POST /api/permissions`, stdout vazio, exit `0`
-- [ ] Com `decisionEvents` reativando `beforeReadFile`, o pedido volta a ser registrado (degradação graciosa)
-- [ ] Com uma regra `allow`/`deny` na política, o hook imprime a decisão nativa e **não** faz nenhuma requisição; grava a decisão em `~/.habblaud/cursor-decisions.jsonl` (best-effort)
-- [ ] Um evento de decisão sem `conversation_id`/ferramenta sai `0`; o pedido registrado carrega `suggest_rule` derivado (e nada quando não dá para derivar)
-- [ ] `server/test/cursor-hook.test.ts` cobre os casos acima (hook como processo real)
-- [ ] Gate check passes: `npm test`
-- [ ] Test count: 12+ casos passam (sem deleções silenciosas)
+- [x] `preToolUse`/`beforeReadFile` (observação) só geram `POST /api/cursor/events` — nenhum `POST /api/permissions`, stdout vazio, exit `0`
+- [x] Com `decisionEvents` reativando `beforeReadFile`, o pedido volta a ser registrado (degradação graciosa)
+- [x] Com uma regra `allow`/`deny` na política, o hook imprime a decisão nativa e **não** faz nenhuma requisição; grava a decisão em `~/.habblaud/cursor-decisions.jsonl` (best-effort)
+- [x] Um evento de decisão sem `conversation_id`/ferramenta sai `0`; o pedido registrado carrega `suggest_rule` derivado (e nada quando não dá para derivar)
+- [x] `server/test/cursor-hook.test.ts` cobre os casos acima (hook como processo real)
+- [x] Gate check passes: `npm test`
+- [x] Test count: 12+ casos passam (sem deleções silenciosas)
 
 **Tests**: integration
 **Gate**: full
@@ -152,11 +152,11 @@ T8 → T9
 
 **Done when**:
 
-- [ ] `readCursorConfig` devolve `{decisionEvents?, rules}` de um JSON válido e `{rules: []}` para ausente/malformado/sem permissão de leitura, sem lançar
-- [ ] `addCursorRule` não duplica `tool+pattern+effect` e respeita o teto; `writeCursorRule` preserva `port`/`decisionTimeoutS` e faz temp+rename
-- [ ] `server/permissions/cursor-rules.test.ts` (com `HOME`/diretório temporário) cobre: round-trip, dedupe, malformado, teto, escrita atômica (arquivo final íntegro)
-- [ ] Gate check passes: `npx vitest run server/permissions/cursor-rules.test.ts`
-- [ ] Test count: 6+ casos passam (sem deleções silenciosas)
+- [x] `readCursorConfig` devolve `{decisionEvents?, rules}` de um JSON válido e `{rules: []}` para ausente/malformado/sem permissão de leitura, sem lançar
+- [x] `addCursorRule` não duplica `tool+pattern+effect` e respeita o teto; `writeCursorRule` preserva `port`/`decisionTimeoutS` e faz temp+rename
+- [x] `server/permissions/cursor-rules.test.ts` (com `HOME`/diretório temporário) cobre: round-trip, dedupe, malformado, teto, escrita atômica (arquivo final íntegro)
+- [x] Gate check passes: `npx vitest run server/permissions/cursor-rules.test.ts`
+- [x] Test count: 6+ casos passam (sem deleções silenciosas)
 
 **Tests**: unit
 **Gate**: quick
@@ -180,13 +180,13 @@ T8 → T9
 
 **Done when**:
 
-- [ ] Um pedido `provider:'cursor'` com `suggest_rule` sai do `register` com uma sugestão `destination:'habblaud'` e o texto da regra; sem `suggest_rule`, sem sugestão
-- [ ] `decide` com `{behavior:'allow', suggestion:0}` num pedido do Cursor resolve `allow` e chama `persistCursorRule` **uma** vez com a regra do pedido; sem `suggestion` não chama
-- [ ] `codex` continua devolvendo `unsupported` para `suggestion` e `interrupt`; `cursor` devolve `unsupported` só para `interrupt`
-- [ ] `suggest_rule` inválido (tipo/tamanho) é descartado sem lançar
-- [ ] `server/permissions/registry.test.ts` cobre os casos acima
-- [ ] Gate check passes: `npx vitest run server/permissions/registry.test.ts`
-- [ ] Test count: 8+ casos passam (sem deleções silenciosas)
+- [x] Um pedido `provider:'cursor'` com `suggest_rule` sai do `register` com uma sugestão `destination:'habblaud'` e o texto da regra; sem `suggest_rule`, sem sugestão
+- [x] `decide` com `{behavior:'allow', suggestion:0}` num pedido do Cursor resolve `allow` e chama `persistCursorRule` **uma** vez com a regra do pedido; sem `suggestion` não chama
+- [x] `codex` continua devolvendo `unsupported` para `suggestion` e `interrupt`; `cursor` devolve `unsupported` só para `interrupt`
+- [x] `suggest_rule` inválido (tipo/tamanho) é descartado sem lançar
+- [x] `server/permissions/registry.test.ts` cobre os casos acima
+- [x] Gate check passes: `npx vitest run server/permissions/registry.test.ts`
+- [x] Test count: 8+ casos passam (sem deleções silenciosas)
 
 **Tests**: unit
 **Gate**: quick
@@ -210,9 +210,9 @@ T8 → T9
 
 **Done when**:
 
-- [ ] `persistCursorRule` está plugado no `PermissionRegistry` usando `config.home`
-- [ ] Falha de escrita não derruba o servidor (loga e segue)
-- [ ] Gate check passes: `npm run typecheck && npm test && npm run build`
+- [x] `persistCursorRule` está plugado no `PermissionRegistry` usando `config.home`
+- [x] Falha de escrita não derruba o servidor (loga e segue)
+- [x] Gate check passes: `npm run typecheck && npm test && npm run build`
 
 **Tests**: none
 **Gate**: build
@@ -236,11 +236,11 @@ T8 → T9
 
 **Done when**:
 
-- [ ] `destinationLabel('habblaud')` devolve um texto claro (ex.: "no Habblaud (regra local do Cursor)")
-- [ ] `permissionOptions({provider:'cursor', suggestions:[…]})` → `always: true`, `interrupt: false`, `reasonRequired: false`; sem sugestão → `always: false`
-- [ ] `client/src/ui/permission.test.ts` cobre o rótulo e o ramo `cursor`
-- [ ] Gate check passes: `npm test`
-- [ ] Test count: 2+ casos novos passam (sem deleções silenciosas)
+- [x] `destinationLabel('habblaud')` devolve um texto claro (ex.: "no Habblaud (regra local do Cursor)")
+- [x] `permissionOptions({provider:'cursor', suggestions:[…]})` → `always: true`, `interrupt: false`, `reasonRequired: false`; sem sugestão → `always: false`
+- [x] `client/src/ui/permission.test.ts` cobre o rótulo e o ramo `cursor`
+- [x] Gate check passes: `npm test`
+- [x] Test count: 2+ casos novos passam (sem deleções silenciosas)
 
 **Tests**: unit
 **Gate**: full
@@ -266,11 +266,11 @@ T8 → T9
 
 **Done when**:
 
-- [ ] `status` imprime os eventos de decisão (config ou padrão `beforeShellExecution`/`beforeMCPExecution`)
-- [ ] `status` imprime o nº de regras locais e o nº de decisões locais; nenhum arquivo é criado/alterado
-- [ ] `server/test/cursor-install.test.ts` cobre: com config (eventos+regras) e sem config (padrão, 0 regras)
-- [ ] Gate check passes: `npx vitest run server/test/cursor-install.test.ts`
-- [ ] Test count: 4+ casos passam (sem deleções silenciosas)
+- [x] `status` imprime os eventos de decisão (config ou padrão `beforeShellExecution`/`beforeMCPExecution`)
+- [x] `status` imprime o nº de regras locais e o nº de decisões locais; nenhum arquivo é criado/alterado
+- [x] `server/test/cursor-install.test.ts` cobre: com config (eventos+regras) e sem config (padrão, 0 regras)
+- [x] Gate check passes: `npx vitest run server/test/cursor-install.test.ts`
+- [x] Test count: 4+ casos passam (sem deleções silenciosas)
 
 **Tests**: unit
 **Gate**: quick
@@ -296,10 +296,10 @@ T8 → T9
 
 **Done when**:
 
-- [ ] O runbook tem o passo de auto-run/allowlist do Cursor e deixa claro que o hook decide independentemente dele
-- [ ] O formato de `rules` e o efeito do "sempre permitir" estão documentados com um exemplo
-- [ ] Os eventos que pedem decisão (padrão e override por `decisionEvents`) estão listados
-- [ ] Gate check passes: `npm run typecheck && npm test && npm run build`
+- [x] O runbook tem o passo de auto-run/allowlist do Cursor e deixa claro que o hook decide independentemente dele
+- [x] O formato de `rules` e o efeito do "sempre permitir" estão documentados com um exemplo
+- [x] Os eventos que pedem decisão (padrão e override por `decisionEvents`) estão listados
+- [x] Gate check passes: `npm run typecheck && npm test && npm run build`
 
 **Tests**: none
 **Gate**: build
@@ -323,9 +323,9 @@ T8 → T9
 
 **Done when**:
 
-- [ ] §6.8 ganha a fase/item do fluxo de permissão apontando para a feature
-- [ ] §6.4 deixa de dizer que "sempre permitir" é impossível no Cursor (passa a citar a emulação local)
-- [ ] Gate check passes: `npm run typecheck && npm test && npm run build`
+- [x] §6.8 ganha a fase/item do fluxo de permissão apontando para a feature
+- [x] §6.4 deixa de dizer que "sempre permitir" é impossível no Cursor (passa a citar a emulação local)
+- [x] Gate check passes: `npm run typecheck && npm test && npm run build`
 
 **Tests**: none
 **Gate**: build
