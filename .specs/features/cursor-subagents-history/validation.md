@@ -219,3 +219,49 @@ total, espelhando o harness). Testes que travam a regressão:
 
 **Pendência do usuário:** o fio só passa a valer na máquina depois de **reinstalar** o hook
 (`npm run cursor:setup` reescreve `hooks.json` com os 17 eventos).
+
+---
+
+## Correção/extensão do CSH-06 — terminal do subagente (CSH-22) — 2026-10-11
+
+**Defeito encontrado em uso real**: ao abrir o terminal de um **subagente**, aparecia *"transcript do
+agente não encontrado"*. Causa raiz: o sub tem transcript próprio, mas o tracker dele **nunca recebia
+`transcriptPath`** — o `subagentStart` não traz o id da conversa do sub, e o Stop apenas **apagava** o
+tracker (`source.ts` antigo: `this.trackers.delete(key)`), então `transcriptPathOf('cursor:s:<id>')`
+nunca resolvia.
+
+**Evidência da correlação** (coleta de chats anteriores, 388 principais + 179 subs, via runbook `12`;
+máquina `jcoelho3`): **178/179** subs têm conteúdo, e o esquema do transcript do sub é **idêntico** ao do
+principal (`{message,role}` por linha + `{type:'turn_ended',status}`, `success`/`aborted`/`error`). O
+`subagentStop` entrega `child_conversation_id` (a conversa própria do sub) e, às vezes,
+`agent_transcript_path`; o transcript fica em
+`~/.cursor/projects/<slug>/agent-transcripts/<pai>/subagents/<child_conversation_id>.jsonl`.
+
+**Correção (aditiva)**:
+
+- `rollout.ts`: `CursorEvent` ganha `childConversationId`/`agentTranscriptPath`; `parseCursorEvent` lê
+  `child_conversation_id`/`agent_transcript_path` (com aliases camelCase).
+- `source.ts`: no `subagentStop`, `subTranscriptPath(t, childId, hint)` resolve o transcript do sub na
+  ordem **`agent_transcript_path` → `<transcript-do-pai>/subagents/<child>.jsonl` → varredura por
+  `<child>.jsonl` em `<dir>/projects/*/agent-transcripts/*/subagents/`** e grava em `t.transcriptPath`; o
+  tracker **não é mais apagado** na entrega (o relógio de presença o remove depois, como a qualquer
+  agente). Sem caminho resolvido, degrada (`undefined`) sem lançar e o principal segue intacto.
+
+**Testes que travam a regressão**:
+
+- `rollout.test.ts` — `parseCursorEvent` lê `child_conversation_id`/`agent_transcript_path`; ausentes
+  ficam `undefined` (sem regredir o `toEqual` estrito dos casos existentes).
+- `source.test.ts` — `subagentStop` com `child_conversation_id` ao lado do pai resolve o arquivo e
+  mantém `terminalParser` definido após a entrega (`done`); resolução **por varredura** quando o pai
+  ainda não tem caminho; prioridade do `agent_transcript_path`; degradação (`undefined`) sem caminho.
+
+**Sensor**: removendo a gravação de `t.transcriptPath` no Stop → as asserções de `transcriptPathOf`
+falham; removendo a varredura → o caso "pai sem caminho" falha; apagando o tracker no Stop (como antes) →
+`terminalParser` do sub deixa de resolver. Gate verde: `typecheck` + `vitest` (107 arquivos, **1384
+passed**/2 skipped) + `build`.
+
+**Limitação (documentada)**: a resolução do transcript do sub acontece no **Stop** (é quando o
+`child_conversation_id` chega pelo hook), então o terminal do sub **preenche ao concluir**, dentro da
+janela de graça do Office (`DONE_GRACE_MS = 25 s`) — igual ao cartão do sub. Terminal ao vivo *durante*
+o sub exigiria correlacionar por outro caminho (sem evidência de hook até hoje): fica como candidato a
+follow-up.

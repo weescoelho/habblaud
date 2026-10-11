@@ -92,6 +92,10 @@ export interface CursorEvent {
   subagentTask?: string;
   /** `parent_conversation_id`: a conversa pai (senão vale o `conversation_id`). */
   parentConversationId?: string;
+  /** `child_conversation_id` (`subagentStop`): a conversa **própria** do subagente (nomeia o transcript dele). */
+  childConversationId?: string;
+  /** `agent_transcript_path` (`subagentStop`): o transcript do subagente, quando a IDE manda. */
+  agentTranscriptPath?: string;
 }
 
 /**
@@ -116,6 +120,10 @@ export function parseCursorEvent(input: Record<string, unknown>): CursorEvent | 
   const subagentType = firstStr(input.subagent_type, input.subagentType);
   const subagentTask = firstStr(input.task);
   const parentConversationId = firstStr(input.parent_conversation_id, input.parentConversationId);
+  // `subagentStop`: a conversa própria do subagente e o caminho do transcript dele. Ausentes ficam `undefined`
+  // (o `subagentStart` não traz o id da conversa do sub; só o Stop fecha a correlação).
+  const childConversationId = firstStr(input.child_conversation_id, input.childConversationId);
+  const agentTranscriptPath = firstStr(input.agent_transcript_path, input.agentTranscriptPath);
   // Campos de token (`stop`/`afterAgentResponse`): cada ausente/não numérico vale 0; sem nenhum campo útil,
   // `tokens` fica `undefined` (o acumulado não é tocado). Aliases camelCase cobrem variações do hook.
   const inputTok = num(input.input_tokens) ?? num(input.inputTokens);
@@ -133,6 +141,8 @@ export function parseCursorEvent(input: Record<string, unknown>): CursorEvent | 
   if (subagentType) event.subagentType = subagentType;
   if (subagentTask) event.subagentTask = subagentTask;
   if (parentConversationId) event.parentConversationId = parentConversationId;
+  if (childConversationId) event.childConversationId = childConversationId;
+  if (agentTranscriptPath) event.agentTranscriptPath = agentTranscriptPath;
   if (inputTok !== undefined || outputTok !== undefined || cacheRead !== undefined || cacheWrite !== undefined) {
     event.tokens = { input: inputTok ?? 0, output: outputTok ?? 0, cacheRead: cacheRead ?? 0, cacheWrite: cacheWrite ?? 0 };
   }

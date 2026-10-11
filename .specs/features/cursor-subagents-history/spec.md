@@ -90,8 +90,13 @@ apareçam como subagentes no escritório, para acompanhar o trabalho paralelo co
    `statusBorder` (`working`/`idle`), sem regredir os eventos já tratados.  <!-- ubiquitous -->
 7. IF um `subagentStart` nunca recebe `subagentStop` THEN o `CursorSource` SHALL completar o subagente
    quando a presença expira (poll), sem deixá-lo preso em `working`.  <!-- unwanted-behavior -->
+8. WHEN um `subagentStop` casa um `subagentStart` e traz o `child_conversation_id` (e, se vier, o
+   `agent_transcript_path`) THEN o `CursorSource` SHALL resolver o transcript **próprio** do subagente
+   (`<transcript-do-pai>/subagents/<child>.jsonl`; senão varredura por `<child>.jsonl` no diretório do
+   Cursor) e SHALL mantê-lo após a entrega, para o terminal do próprio sub; IF não resolver THEN o
+   terminal do sub SHALL degradar (vazio, sem lançar), sem afetar o principal.  <!-- event-driven -->
 
-**Independent Test**: empurrar `sessionStart` do principal, um `subagentStart` (`subagent_id`, `parent_conversation_id`, `subagent_type`, `task`) e conferir no snapshot do Office um agente `kind:'sub'`, `parentId` do principal, `role` do tipo e `title` da tarefa, `status:'working'`; empurrar o `subagentStop` e conferir `done`; empurrar um `subagentStop`/`subagentStart` sem id/pai e conferir no-op sem lançar; avançar o relógio além de `STALE_PRESENCE_MS`, `poll()` e conferir o sub `done`.
+**Independent Test**: empurrar `sessionStart` do principal, um `subagentStart` (`subagent_id`, `parent_conversation_id`, `subagent_type`, `task`) e conferir no snapshot do Office um agente `kind:'sub'`, `parentId` do principal, `role` do tipo e `title` da tarefa, `status:'working'`; empurrar o `subagentStop` e conferir `done`; empurrar um `subagentStop`/`subagentStart` sem id/pai e conferir no-op sem lançar; avançar o relógio além de `STALE_PRESENCE_MS`, `poll()` e conferir o sub `done`. Para o terminal do sub: criar `agent-transcripts/<pai>/subagents/<child>.jsonl` sintético e conferir que o `subagentStop` com `child_conversation_id` faz `transcriptPathOf('cursor:s:<id>')` devolver esse arquivo (ao lado do pai ou por varredura) e `terminalParser` seguir definido após a entrega.
 
 ### P1: GitHub a partir do transcript do Cursor
 
@@ -194,11 +199,12 @@ efeitos não quebre o escritório, nem que desligar o Cursor afete as outras fer
 | CSH-19         | P1: Histórico do terminal          | Design | Implementing |
 | CSH-20         | P2: Degradação                     | Design | Implementing |
 | CSH-21         | P2: Degradação                     | Design | Implementing |
+| CSH-22         | P1: Subagentes por hook            | Design | Implementing |
 
 **ID format:** `[CATEGORY]-[NUMBER]` (e.g., `AUTH-01`, `CART-03`)
 
 **Status values:** Pending → In Design → In Tasks → Implementing → Verified
-**Coverage:** 21 total, 21 mapped to tasks, 0 unmapped ✅
+**Coverage:** 22 total, 22 mapped to tasks, 0 unmapped ✅
 
 ## Success Criteria
 

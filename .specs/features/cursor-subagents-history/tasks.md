@@ -380,3 +380,20 @@ Dependências entre fases (validadas pelo grafo sequencial): `T2`←`T1`; `T4`�
 - **Nada de festa falsa**: `seekEnd` no 1º attach e as travas de `--dry-run`/`--delete`/`--auto`.
 - **Não inventar**: sem `tool_result` não há desfecho — o fallback só-comando é a v1 documentada.
 - **Uma task, um commit**: nada de "já que estou aqui".
+
+---
+
+## Correção pós-verificação — terminal do subagente (CSH-22, 2026-10-11)
+
+**Requirement**: CSH-22 (ver "Correção/extensão" em `validation.md`)
+
+**What**: O subagente tem transcript próprio (`agent-transcripts/<pai>/subagents/<child>.jsonl`, mesmo esquema do principal), mas o `subagentStart` **não** traz o id da conversa do sub — só o `subagentStop` traz `child_conversation_id` (e, quando a IDE manda, `agent_transcript_path`). Passar a: (1) ler `child_conversation_id`/`agent_transcript_path` em `parseCursorEvent`; (2) no `subagentStop`, resolver o transcript do sub (`agent_transcript_path` > `<pai>/subagents/<child>.jsonl` > varredura por `<child>.jsonl` no diretório do Cursor) e **não apagar o tracker** na entrega, para o terminal do sub (já `done`, na janela de graça do Office) continuar resolvendo o caminho. Sem caminho, degrada (`undefined`, terminal vazio) sem lançar.
+**Where**: `server/sources/cursor/rollout.ts`, `server/sources/cursor/source.ts`
+**Commit**: `fix(cursor): terminal do subagente le o transcript proprio`
+
+**Done when**:
+
+- [x] `subagentStop` com `child_conversation_id` deixa `transcriptPathOf('cursor:s:<id>')` apontando para o transcript do sub (ao lado do pai ou por varredura)
+- [x] `agent_transcript_path`, quando presente, tem prioridade; sem caminho, degrada (`undefined`) sem lançar; principal intacto
+- [x] `rollout.test.ts`/`source.test.ts` cobrem os casos; gate verde (`typecheck` + `vitest` + `build`)
+

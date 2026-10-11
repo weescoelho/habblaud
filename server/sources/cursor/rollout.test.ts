@@ -144,6 +144,27 @@ describe('parseCursorEvent', () => {
     expect(so?.parentConversationId).toBeUndefined();
     expect(parseCursorEvent({ hook_event_name: 'subagentStart' })).toEqual({ name: 'subagentStart' });
   });
+
+  it('lê child_conversation_id/agent_transcript_path do subagentStop; ausentes ficam undefined', () => {
+    expect(
+      parseCursorEvent({
+        hook_event_name: 'subagentStop',
+        conversation_id: 'conv-1',
+        subagent_id: 'sa-9',
+        child_conversation_id: 'child-1',
+        agent_transcript_path: '/t/sub.jsonl',
+      }),
+    ).toEqual({
+      name: 'subagentStop',
+      conversationId: 'conv-1',
+      subagentId: 'sa-9',
+      childConversationId: 'child-1',
+      agentTranscriptPath: '/t/sub.jsonl',
+    });
+    const so = parseCursorEvent({ hook_event_name: 'subagentStop', subagent_id: 'sa-1' });
+    expect(so?.childConversationId).toBeUndefined();
+    expect(so?.agentTranscriptPath).toBeUndefined();
+  });
 });
 
 describe('describeCursorTool', () => {

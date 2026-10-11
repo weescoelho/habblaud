@@ -1,8 +1,8 @@
 // Integração da fonte do Cursor: sem arquivos locais (lacuna C2), a presença vem só dos eventos de hook. O teste usa
 // o AccountsService e o Office de verdade e empurra eventos de hook sintéticos, cobrindo 1:1 os ACs de T5
 // (CPOC-01, CPOC-03, CPOC-04, CPOC-08, CPOC-10) e os edge cases da spec (sala padrão, fora de ordem, expiração).
-import { appendFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AgentInfo } from '../../../shared/types';
 import { AccountsService } from '../../accounts/service';
@@ -351,6 +351,74 @@ describe('fonte do Cursor: subagentes por hook', () => {
     expect(ctx.agent('cursor:s:sa-8')?.status).toBe('done');
     ctx.hook(sub({ subagent_id: 'sa-8', task: 'Tarefa A de novo' }));
     expect(ctx.agent('cursor:s:sa-8')?.status).toBe('working');
+  });
+
+  it('subagentStop resolve o transcript do sub ao lado do pai (child_conversation_id) e mantém o terminal', () => {
+    const ctx = setup();
+    const parentFile = join(ctx.dir, 'projects', 'slug', 'agent-transcripts', 'c1', 'c1.jsonl');
+    mkdirSync(dirname(parentFile), { recursive: true });
+    writeFileSync(parentFile, '{}\n');
+    ctx.hook(ev('sessionStart', { transcript_path: parentFile }));
+    const subFile = join(dirname(parentFile), 'subagents', 'child-1.jsonl');
+    mkdirSync(dirname(subFile), { recursive: true });
+    writeFileSync(subFile, `${JSON.stringify({ role: 'assistant', message: { content: 'ok' } })}\n`);
+    ctx.hook(sub({ parent_conversation_id: 'c1', subagent_id: 'sa-9' }));
+    ctx.hook({
+      hook_event_name: 'subagentStop',
+      conversation_id: 'c1',
+      subagent_id: 'sa-9',
+      child_conversation_id: 'child-1',
+    });
+    expect(ctx.source.transcriptPathOf('cursor:s:sa-9')).toBe(subFile);
+    expect(ctx.source.terminalParser('cursor:s:sa-9')).toBeDefined(); // o terminal do sub resolve
+    expect(ctx.agent('cursor:s:sa-9')?.status).toBe('done');
+    // O principal não foi afetado.
+    expect(ctx.agent('cursor:c1')?.status).toBe('idle');
+  });
+
+  it('subagentStop acha o transcript do sub por varredura quando o pai ainda não tem caminho', () => {
+    const ctx = setup();
+    ctx.hook(ev('sessionStart'));
+    const subFile = join(
+      ctx.dir,
+      'projects',
+      'outro-slug',
+      'agent-transcripts',
+      'conv-7',
+      'subagents',
+      'child-2.jsonl',
+    );
+    mkdirSync(dirname(subFile), { recursive: true });
+    writeFileSync(subFile, `${JSON.stringify({ role: 'assistant', message: { content: 'ok' } })}\n`);
+    ctx.hook(sub({ subagent_id: 'sa-10' }));
+    ctx.hook({
+      hook_event_name: 'subagentStop',
+      conversation_id: 'c1',
+      subagent_id: 'sa-10',
+      child_conversation_id: 'child-2',
+    });
+    expect(ctx.source.transcriptPathOf('cursor:s:sa-10')).toBe(subFile);
+  });
+
+  it('subagentStop prefere `agent_transcript_path` e degrada sem caminho conhecido', () => {
+    const ctx = setup();
+    ctx.hook(ev('sessionStart'));
+    const hinted = join(ctx.home.dir, 'sub-hint.jsonl');
+    writeFileSync(hinted, '');
+    ctx.hook(sub({ subagent_id: 'sa-11' }));
+    ctx.hook({
+      hook_event_name: 'subagentStop',
+      conversation_id: 'c1',
+      subagent_id: 'sa-11',
+      child_conversation_id: 'child-3',
+      agent_transcript_path: hinted,
+    });
+    expect(ctx.source.transcriptPathOf('cursor:s:sa-11')).toBe(hinted);
+
+    // Sem child id nem hint, o terminal degrada (undefined), sem lançar.
+    ctx.hook(sub({ subagent_id: 'sa-12' }));
+    expect(ctx.hook({ hook_event_name: 'subagentStop', conversation_id: 'c1', subagent_id: 'sa-12' })).toBe(true);
+    expect(ctx.source.transcriptPathOf('cursor:s:sa-12')).toBeUndefined();
   });
 });
 

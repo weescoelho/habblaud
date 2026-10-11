@@ -7,8 +7,13 @@
 // novo reabre a sessão. O `transcript_path` que os hooks trazem é guardado por conversa (só quando vem não
 // vazio; nunca limpo por um evento sem ele) e vira o terminal via transcriptPathOf/terminalParser.
 //
+// Subagentes: `subagentStart`/`subagentStop` formam um par por `subagent_id`, ligado ao agente pai. O sub tem
+// transcript próprio (`agent-transcripts/<pai>/subagents/<child>.jsonl`); o id da conversa dele
+// (`child_conversation_id`) só chega no Stop, então o terminal do sub resolve no Stop e sobrevive à entrega.
+//
 // Status: aplicado por bordas (decide), a informação mais nova vence (statusAt): um evento atrasado não regride.
-import { join, resolve } from 'node:path';
+import { existsSync, readdirSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { githubEventKey } from '../../../shared/github';
 import type { Activity, AgentStats, AgentStatus, SourceInfo } from '../../../shared/types';
 import { ACCOUNT_COLORS, type DetectedAccount } from '../../accounts/detect';
@@ -280,11 +285,15 @@ export class CursorSource implements AgentSource, CursorLive {
     const now = this.now();
 
     if (event.name === 'subagentStop') {
-      // Entrega o sub do par; um Stop sem Start visto antes é no-op.
+      // Entrega o sub do par; um Stop sem Start visto antes é no-op. O Stop é quem traz a correlação
+      // (`child_conversation_id`) e, às vezes, o `agent_transcript_path`: resolve o transcript do sub ANTES
+      // de entregar. O tracker NÃO é apagado — o terminal do sub (agora `done`, na janela de graça do Office)
+      // ainda precisa de `transcriptPathOf`. O relógio de presença o remove depois, como a qualquer agente.
       const t = this.trackers.get(key);
       if (t) {
+        const path = this.subTranscriptPath(t, event.childConversationId, event.agentTranscriptPath);
+        if (path) t.transcriptPath = path;
         this.leave(t);
-        this.trackers.delete(key);
       }
       return true;
     }
@@ -327,6 +336,46 @@ export class CursorSource implements AgentSource, CursorLive {
     });
     t.inOffice = this.opts.office.has(key);
     return true;
+  }
+
+  /**
+   * Transcript próprio do subagente. O `subagentStart` não traz o id da conversa do sub; só o `subagentStop`
+   * traz `child_conversation_id` (e, quando a IDE manda, `agent_transcript_path`). Ordem de resolução:
+   *   1. `agent_transcript_path`, quando presente (autoritativo);
+   *   2. ao lado do transcript do pai: `<pai>/subagents/<child>.jsonl` (quando o pai já tem caminho conhecido);
+   *   3. varredura do diretório do Cursor pelo `child` (o id é único): `<dir>/projects/<slug>/agent-transcripts/
+   *      <conv>/subagents/<child>.jsonl`.
+   * Sem nada disso, degrada (`undefined`): o terminal mostra vazio em vez de um caminho falso.
+   */
+  private subTranscriptPath(t: CursorTracker, childId?: string, hint?: string): string | undefined {
+    if (hint) return hint;
+    if (!childId) return undefined;
+    const parent = t.parentId ? this.trackers.get(t.parentId) : undefined;
+    if (parent?.transcriptPath) {
+      const side = join(dirname(parent.transcriptPath), 'subagents', `${childId}.jsonl`);
+      if (existsSync(side)) return side;
+    }
+    const projects = join(this.dir, 'projects');
+    let slugs: string[];
+    try {
+      slugs = readdirSync(projects);
+    } catch {
+      return undefined; // sem a pasta do Cursor: degrada
+    }
+    for (const slug of slugs) {
+      const transcripts = join(projects, slug, 'agent-transcripts');
+      let conversations: string[];
+      try {
+        conversations = readdirSync(transcripts);
+      } catch {
+        continue;
+      }
+      for (const conversation of conversations) {
+        const file = join(transcripts, conversation, 'subagents', `${childId}.jsonl`);
+        if (existsSync(file)) return file;
+      }
+    }
+    return undefined;
   }
 
   /** Traz o agente para o escritório (sala `workspace_roots[0]`/`cwd` ou a padrão) com o status atual. */
