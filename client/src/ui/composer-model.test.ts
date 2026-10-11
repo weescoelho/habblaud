@@ -6,6 +6,7 @@ import {
   CODEX_TIMEOUT_ERROR,
   composerMode,
   composerTip,
+  CURSOR_OFF_TEXT,
   DELIVERED_SHOW_MS,
   enterSends,
   isSettled,
@@ -109,6 +110,21 @@ describe('caixa de mensagem (peças puras)', () => {
     expect(composerMode(codex(), { ...ON, enabled: false })).toEqual({ kind: 'off', text: 'Para responder, use o Codex' });
     expect(composerMode(codex({ kind: 'sub', parentId: 'acc:1' }), ON).kind).toBe('off');
     expect(composerMode(codex({ status: 'offline' }), ON)).toEqual({ kind: 'off', text: 'Sessão encerrada' });
+  });
+
+  it('Cursor: mensagens não são oferecidas (Fase 5, 06 §6.6) — a gaveta esconde e sobra o motivo', () => {
+    const cursor = (over: Partial<AgentInfo> = {}) => agent({ provider: 'cursor', ...over });
+    // Principal ao vivo, com plugin/recurso/local: ainda assim, `off` (v1 não oferece).
+    expect(composerMode(cursor(), ON)).toEqual({ kind: 'off', text: CURSOR_OFF_TEXT });
+    expect(CURSOR_OFF_TEXT).toBe('Para responder, use o Cursor');
+    // A guarda do Cursor não mascara estados mais específicos.
+    const sub = composerMode(cursor({ kind: 'sub', parentId: 'acc:1' }), ON);
+    expect(sub).toMatchObject({ kind: 'off', text: expect.stringMatching(/^Subagentes/) });
+    expect(composerMode(cursor({ status: 'offline' }), ON)).toEqual({ kind: 'off', text: 'Sessão encerrada' });
+    expect(composerMode(cursor({ status: 'done' }), ON)).toEqual({ kind: 'off', text: 'Sessão encerrada' });
+    expect(composerMode(cursor(), { ...ON, replaying: true })).toMatchObject({ text: expect.stringMatching(/timelapse/) });
+    // Sem regressão: claude (sem provider) e codex seguem `ready` com entregador.
+    expect(composerMode(agent(), ON)).toEqual({ kind: 'ready' });
   });
 
   it('Codex: "Entregue" é a fila da sessão; dica e prazo falam do Codex', () => {

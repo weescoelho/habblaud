@@ -9,6 +9,8 @@ import type { AgentInfo, OutboxStatus, Provider } from '../../../shared/types';
 export const PLUGIN_HINT = 'Para mandar mensagens daqui: npm run mod:install (plugin habblaud-mensagens)';
 /** A mesma dica para um agente do Codex sem entregador (no modo Node o próprio servidor entrega). */
 export const CODEX_BRIDGE_HINT = 'Para mandar mensagens ao Codex: com o Habblaud no Docker, deixe npm run codex:bridge rodando; no modo Node funciona sozinho';
+/** Mensagens ao Cursor não são oferecidas na v1 (06 §6.6, P6/C7): sem injeção confiável na sessão. */
+export const CURSOR_OFF_TEXT = 'Para responder, use o Cursor';
 
 /**
  * - ready: dá para mandar (principal com o plugin conectado, recurso ligado, página local);
@@ -30,6 +32,10 @@ export function composerMode(agent: AgentInfo | undefined, env: ComposerEnv): Co
   if (env.replaying) return { kind: 'off', text: 'Sem mensagens no timelapse: o escritório mostrado é o de outro momento' };
   if (agent?.kind === 'sub') return { kind: 'off', text: 'Subagentes não recebem mensagens: escreva para o agente principal' };
   if (!agent || agent.status === 'offline' || agent.status === 'done') return { kind: 'off', text: 'Sessão encerrada' };
+  // Fase 5 (Cursor): mensagens à sessão do Cursor não são oferecidas na v1 (06 §6.6 — P6/C7: sem injeção
+  // confiável; `followup_message` depende de validação ao vivo). A guarda fica depois dos estados mais
+  // específicos (replay/sub/sessão encerrada) e não toca em claude/codex.
+  if (agent.provider === 'cursor') return { kind: 'off', text: CURSOR_OFF_TEXT };
   const codex = agent.provider === 'codex';
   if (!env.enabled) return { kind: 'off', text: codex ? 'Para responder, use o Codex' : 'Para responder, use o terminal do Claude Code' };
   if (!env.local) return { kind: 'off', text: 'Para mandar mensagens por aqui, abra o Habblaud por http://localhost (ou 127.0.0.1)' };

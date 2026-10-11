@@ -130,12 +130,12 @@ caixa; o terminal mostra o motivo). Não tocar nos ramos de claude/codex.
 
 **Done when**:
 
-- [ ] principal do Cursor ao vivo (enabled+local+`canMessage`) → `{kind:'off', text: CURSOR_OFF_TEXT}`
-- [ ] sub do Cursor → mensagem de subagente (não a do Cursor); sessão do Cursor encerrada → "Sessão encerrada"
-- [ ] casos de claude/codex atuais seguem passando sem edição (não-regressão F5-05)
-- [ ] `composer-model.test.ts` cobre os casos acima
-- [ ] Gate check passes: `npx vitest run client/src/ui/composer-model.test.ts`
-- [ ] Commit único `feat(cursor): nao oferecer mensagens para sessoes do cursor`
+- [x] principal do Cursor ao vivo (enabled+local+`canMessage`) → `{kind:'off', text: CURSOR_OFF_TEXT}`
+- [x] sub do Cursor → mensagem de subagente (não a do Cursor); sessão do Cursor encerrada → "Sessão encerrada"
+- [x] casos de claude/codex atuais seguem passando sem edição (não-regressão F5-05)
+- [x] `composer-model.test.ts` cobre os casos acima
+- [x] Gate check passes: `npx vitest run client/src/ui/composer-model.test.ts`
+- [x] Commit único `feat(cursor): nao oferecer mensagens para sessoes do cursor`
 
 **Tests**: unit
 **Gate**: quick (full final na T4)
