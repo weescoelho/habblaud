@@ -199,6 +199,16 @@ export function codexUsageNote(a: Pick<AccountInfo, 'usage' | 'usageStatus' | 'p
   return `O Codex só grava o uso enquanto alguma sessão roda: estes números são da última leitura (${age}).`;
 }
 
+/**
+ * Contas que ganham cartão de uso. O Cursor não tem fonte local de uso do plano (P8: 🔴 confirmado,
+ * só config/telemetria e `plans/`), então a conta `cursor` fica de fora do cartão — `06` §6.5 decide
+ * "ocultar o cartão" na v1 (a conta continua no snapshot/statusline). claude (sem `provider`) e codex
+ * seguem iguais.
+ */
+export function usageCardAccounts(accounts: readonly AccountInfo[]): AccountInfo[] {
+  return accounts.filter((a) => a.provider !== 'cursor');
+}
+
 export class UsageCards {
   readonly el: HTMLElement;
   private list: KeyedList<AccountInfo>;
@@ -214,7 +224,7 @@ export class UsageCards {
   }
 
   render(): void {
-    const accounts = this.ctx.store.snapshot?.accounts ?? [];
+    const accounts = usageCardAccounts(this.ctx.store.snapshot?.accounts ?? []);
     this.list.sync(accounts);
     this.el.classList.toggle('is-empty', accounts.length === 0);
     setStyleVar(this.el, '--count', String(accounts.length));

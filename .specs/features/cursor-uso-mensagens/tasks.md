@@ -98,12 +98,12 @@ devolvendo `accounts.filter((a) => a.provider !== 'cursor')` e usar no `UsageCar
 
 **Done when**:
 
-- [ ] `usageCardAccounts` filtra contas com `provider === 'cursor'` e mantém claude/codex/sem-provider
-- [ ] `render()` usa o filtro (conta do Cursor fica fora dos cartões)
-- [ ] testes em `usage-source.test.ts`: cursor sai, claude/codex ficam, só-cursor → vazio (`[]`)
-- [ ] Gate check passes: `npx vitest run client/src/ui/usage-source.test.ts`
-- [ ] Sem regressão: `npm test` (suíte completa, focus claude/codex) — opcional neste task se T3 rodar em seguida
-- [ ] Commit único `feat(cursor): ocultar o cartao de uso para o cursor`
+- [x] `usageCardAccounts` filtra contas com `provider === 'cursor'` e mantém claude/codex/sem-provider
+- [x] `render()` usa o filtro (conta do Cursor fica fora dos cartões)
+- [x] testes em `usage-source.test.ts`: cursor sai, claude/codex ficam, só-cursor → vazio (`[]`)
+- [x] Gate check passes: `npx vitest run client/src/ui/usage-source.test.ts`
+- [x] Sem regressão: `npm test` (suíte completa, focus claude/codex) — opcional neste task se T3 rodar em seguida
+- [x] Commit único `feat(cursor): ocultar o cartao de uso para o cursor`
 
 **Tests**: unit
 **Gate**: quick (full se conveniente)
