@@ -213,10 +213,10 @@ Each requirement gets a unique ID for tracking across design, tasks, and validat
 | CP48-11        | S3: CLI     | Design | Implementing |
 | CP48-12        | S3: CLI     | Design | Implementing |
 | CP48-13        | S3: CLI     | Design | Implementing |
-| CP48-14        | S4: Followup | Design | Pending |
-| CP48-15        | S4: Followup | Design | Pending |
-| CP48-16        | S4: Followup | Design | Pending |
-| CP48-17        | S4: Followup | Design | Pending |
+| CP48-14        | S4: Followup | Design | Implementing |
+| CP48-15        | S4: Followup | Design | Implementing |
+| CP48-16        | S4: Followup | Design | Implementing |
+| CP48-17        | S4: Followup | Design | Implementing |
 | CP48-18        | S5: Histórico | Design | Pending |
 | CP48-19        | S5: Histórico | Design | Pending |
 | CP48-20        | S5: Histórico | Design | Pending |

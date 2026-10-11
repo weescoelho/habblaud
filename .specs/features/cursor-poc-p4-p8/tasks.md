@@ -10,7 +10,7 @@ Implement these tasks with the `tlc-spec-driven` skill: **activate it by name an
 
 **Design**: `.specs/features/cursor-poc-p4-p8/design.md`
 **Spec**: `.specs/features/cursor-poc-p4-p8/spec.md`
-**Status**: Em execução (T1 ✅, T2 ✅, T3 ✅; T4–T8 pendentes)
+**Status**: Em execução (T1 ✅, T2 ✅, T3 ✅, T4 ✅; T5–T8 pendentes)
 
 ---
 
@@ -192,15 +192,15 @@ T7 → T8
 
 **Done when**:
 
-- [ ] Com `{hook_event_name:'stop'}` no stdin e `HABBLAUD_CURSOR_POC_FOLLOWUP` definido, imprime `{"followup_message":"…"}` e sai `0`
-- [ ] Com evento ≠ `stop` ou stdin inválido, sai `0` sem escrever nada
-- [ ] `server/test/cursor-poc.test.ts` spawna o probe (processo de verdade) e cobre os dois casos
-- [ ] Gate check passes: `npm test`
-- [ ] Test count: 3+ casos passam (sem deleções silenciosas)
+- [x] Com `{hook_event_name:'stop'}` no stdin e `HABBLAUD_CURSOR_POC_FOLLOWUP` definido, imprime `{"followup_message":"…"}` e sai `0`
+- [x] Com evento ≠ `stop` ou stdin inválido, sai `0` sem escrever nada
+- [x] `server/test/cursor-poc.test.ts` spawna o probe (processo de verdade) e cobre os dois casos
+- [x] Gate check passes: `npm test`
+- [x] Test count: 3+ casos passam (sem deleções silenciosas)
 
 **Tests**: integration
 **Gate**: full
-**Status**: ⬜ Pending
+**Status**: ✅ Complete
 
 **Commit**: `feat(cursor): probe de followup da p6`
 

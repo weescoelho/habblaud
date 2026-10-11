@@ -11,6 +11,7 @@ import { HAS_POSIX_MODES, tempDir } from './fixtures';
 
 const SCRIPT = resolve(__dirname, '../../scripts/cursor-poc.ts');
 const HOOK = resolve(__dirname, '../../mod/habblaud-cursor/poc-hook.mjs');
+const FOLLOWUP_HOOK = resolve(__dirname, '../../mod/habblaud-cursor/followup-hook.mjs');
 const ROOT = resolve(__dirname, '../..');
 
 /** Roda o harness como o usuário rodaria: `node --import tsx scripts/cursor-poc.ts <args>`. */
@@ -178,6 +179,44 @@ describe('cursor-poc poc-hook.mjs (captura)', () => {
     expect(r.status).toBe(0);
     expect(existsSync(join(dir, 'events.jsonl'))).toBe(true);
     expect(existsSync(join(home, '.habblaud', 'cursor-poc', 'events.jsonl'))).toBe(false);
+  });
+});
+
+/** Roda o probe de followup como a IDE rodaria: `node mod/habblaud-cursor/followup-hook.mjs` com o evento no stdin. */
+function followupHook(input: string, env: NodeJS.ProcessEnv = {}) {
+  return spawnSync(process.execPath, [FOLLOWUP_HOOK], {
+    input,
+    encoding: 'utf8',
+    timeout: 10_000,
+    env: { PATH: process.env.PATH, ...env },
+  });
+}
+
+describe('cursor-poc followup-hook.mjs (P6)', () => {
+  it('stop com HABBLAUD_CURSOR_POC_FOLLOWUP: imprime {"followup_message":"…"} e sai 0', () => {
+    const r = followupHook(JSON.stringify({ hook_event_name: 'stop', conversation_id: 'c1' }), { HABBLAUD_CURSOR_POC_FOLLOWUP: 'volte ao plano' });
+    expect(r.status).toBe(0);
+    expect(JSON.parse(r.stdout.trim())).toEqual({ followup_message: 'volte ao plano' });
+  });
+
+  it('stop sem a variável: ainda imprime um followup_message não vazio (o texto padrão)', () => {
+    const r = followupHook(JSON.stringify({ hook_event_name: 'stop' }));
+    expect(r.status).toBe(0);
+    const out = JSON.parse(r.stdout.trim()) as { followup_message?: unknown };
+    expect(typeof out.followup_message).toBe('string');
+    expect(out.followup_message).not.toBe('');
+  });
+
+  it('evento que não é stop: sai 0 sem imprimir nada', () => {
+    const r = followupHook(JSON.stringify({ hook_event_name: 'preToolUse', tool_name: 'Read' }));
+    expect(r.status).toBe(0);
+    expect(r.stdout).toBe('');
+  });
+
+  it('stdin inválido/não-JSON: sai 0 sem imprimir nada', () => {
+    const r = followupHook('isto não é json');
+    expect(r.status).toBe(0);
+    expect(r.stdout).toBe('');
   });
 });
 
