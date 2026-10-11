@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 5,
+  "next_id": 6,
   "lessons": [
     {
       "id": "L-001",
@@ -76,6 +76,24 @@
       ],
       "created": "2026-10-11T18:40:04Z",
       "last_seen": "2026-10-11T18:40:04Z"
+    },
+    {
+      "id": "L-005",
+      "key": "surviving_mutant::assert the consumer wiring that applies a pure helper e g filtering a list before render and its empty flag not only the pure helper itself",
+      "text": "Assert the consumer wiring that applies a pure helper (e.g. filtering a list before render and its empty flag), not only the pure helper itself",
+      "signal": "surviving_mutant",
+      "scope": "client/ui",
+      "status": "candidate",
+      "features": [
+        "cursor-uso-mensagens"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "U4/U5 (usage.ts:227,229; usage-source.test.ts:66-85) (client/ui)"
+      ],
+      "created": "2026-10-11T18:57:46Z",
+      "last_seen": "2026-10-11T18:57:46Z"
     }
   ]
 }

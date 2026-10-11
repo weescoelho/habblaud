@@ -38,6 +38,12 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: source.test.ts:370-372 (CSH-09; spec.md:107-108) (cursor/source)
 - last seen: 2026-10-11T18:40:04Z
 
+### L-005 - Assert the consumer wiring that applies a pure helper (e.g. filtering a list before render and its empty flag), not only the pure helper itself
+- signal: `surviving_mutant` · recurrence: 1 feature(s) · scope: `client/ui` · harmful: 0
+- features: cursor-uso-mensagens
+- evidence: U4/U5 (usage.ts:227,229; usage-source.test.ts:66-85) (client/ui)
+- last seen: 2026-10-11T18:57:46Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.
