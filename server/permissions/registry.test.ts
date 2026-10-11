@@ -8,7 +8,8 @@ import { setQuiet } from '../log';
 import { NameStore } from '../model/names';
 import { Office } from '../model/office';
 import { appendLines, L, tempDir, writeLines } from '../test/fixtures';
-import { EXPIRY_GRACE_MS, parseDecision, pickSuggestions, PermissionRegistry, type WaitResult } from './registry';
+import { EXPIRY_GRACE_MS, parseDecision, pickSuggestions, PermissionRegistry, type RegistryOptions, type WaitResult } from './registry';
+import type { CursorRule } from './cursor-rules';
 import { callSignature, scanToolCall } from './transcript';
 
 setQuiet(true);
@@ -16,8 +17,12 @@ setQuiet(true);
 const MAIN = 'acc:1';
 const SESSION = 'sess-1';
 const SUB = `${SESSION}:a1b2c3`;
+const CURSOR_CONV = '0199b0c0-5678-9def-0123-456789abcdef';
+const CURSOR_MAIN = `cursor:${CURSOR_CONV}`;
+const CODEX_THREAD = '0199b0c0-1234-7abc-8def-0123456789ab';
+const CODEX_MAIN = `.codex:${CODEX_THREAD}`;
 
-function setup(opts: { viewers?: number; transcript?: string; orphanMs?: number } = {}) {
+function setup(opts: { viewers?: number; transcript?: string; orphanMs?: number; registry?: Partial<RegistryOptions> } = {}) {
   let now = 1_000_000;
   const clock = { now: () => now, advance: (ms: number) => (now += ms) };
   let permissions: PermissionRegistry | undefined;
@@ -35,7 +40,7 @@ function setup(opts: { viewers?: number; transcript?: string; orphanMs?: number 
   let viewers = opts.viewers ?? 1;
   const paths = new Map<string, string>();
   if (opts.transcript) paths.set(MAIN, opts.transcript);
-  permissions = new PermissionRegistry({ office, viewers: () => viewers, transcriptPathOf: (id) => paths.get(id), now: clock.now, orphanMs: opts.orphanMs });
+  permissions = new PermissionRegistry({ office, viewers: () => viewers, transcriptPathOf: (id) => paths.get(id), now: clock.now, orphanMs: opts.orphanMs, ...opts.registry });
   return { office, registry: permissions, clock, paths, setViewers: (n: number) => (viewers = n) };
 }
 
@@ -72,6 +77,48 @@ const ASK_INPUT = {
 };
 
 const askInput = (over: Record<string, unknown> = {}) => hookInput({ tool_name: 'AskUserQuestion', tool_input: ASK_INPUT, permission_suggestions: [], ...over });
+
+/** Pedido do hook do Cursor (beforeShellExecution) com a regra local derivada que ele manda no suggest_rule. */
+const cursorInput = (over: Record<string, unknown> = {}) => ({
+  provider: 'cursor',
+  session_id: CURSOR_CONV,
+  cwd: '/p/loja',
+  hook_event_name: 'beforeShellExecution',
+  tool_name: 'Shell',
+  tool_input: { command: 'npm test' },
+  suggest_rule: { tool: 'Shell', pattern: '^npm test(\\s|$)', effect: 'allow', note: 'npm test' },
+  timeout_ms: 60_000,
+  ...over,
+});
+
+/** Pedido do hook do Codex (para conferir que ele segue recusando "sempre permitir"). */
+const codexInput = (over: Record<string, unknown> = {}) => ({
+  provider: 'codex',
+  session_id: CODEX_THREAD,
+  agent_id: CODEX_THREAD,
+  account: '.codex',
+  codexHome: '/home/x/.codex',
+  cwd: '/p/loja',
+  hook_event_name: 'PermissionRequest',
+  tool_name: 'Bash',
+  tool_input: { command: 'npm test' },
+  timeout_ms: 60_000,
+  ...over,
+});
+
+/** Setup com um agente principal do Cursor (conversa CURSOR_CONV). */
+function setupCursor(extra: Partial<RegistryOptions> = {}) {
+  const s = setup({ registry: extra });
+  s.office.addMain({ id: CURSOR_MAIN, provider: 'cursor', account: 'cursor', sessionId: CURSOR_CONV, cwd: '/p/loja', role: 'Agente principal (Cursor)', startedAt: 0, status: 'working' });
+  return s;
+}
+
+/** Setup com um agente principal do Codex (thread CODEX_THREAD). */
+function setupCodex(extra: Partial<RegistryOptions> = {}) {
+  const s = setup({ registry: extra });
+  s.office.addMain({ id: CODEX_MAIN, provider: 'codex', account: '.codex', sessionId: CODEX_THREAD, cwd: '/p/loja', role: 'Agente principal', startedAt: 0, status: 'working' });
+  return s;
+}
 
 describe('PermissionRegistry: registro', () => {
   it('sem página local aberta, com sessão desconhecida ou AskUserQuestion sem perguntas para mostrar: não desvia (skip)', () => {
@@ -401,6 +448,59 @@ describe('PermissionRegistry: pedidos órfãos', () => {
     const w = registry.wait(id, 25_000)!;
     registry.stop();
     await expect(w.result).resolves.toEqual<WaitResult>({ status: 'released', reason: 'shutdown' });
+  });
+});
+
+describe('PermissionRegistry: "sempre permitir" do Cursor (e o Codex inalterado)', () => {
+  it('register com suggest_rule: sintetiza a sugestão própria (destination "habblaud") com o texto da regra', () => {
+    const { office, registry } = setupCursor();
+    const id = registered(registry.register(cursorInput()));
+    const a = snapAgent(office, CURSOR_MAIN)!;
+    expect(a.permission).toMatchObject({ id, provider: 'cursor', tool: 'Shell', title: 'Bash(npm test)' });
+    expect(a.permission!.suggestions).toEqual([{ index: 0, rules: ['Shell(npm test)'], destination: 'habblaud' }]);
+    expect(registry.detail(id)!.suggestions).toEqual([{ index: 0, rules: ['Shell(npm test)'], destination: 'habblaud' }]);
+  });
+
+  it('sem suggest_rule (ou sugestão inválida): não há sugestão e o pedido segue normal', () => {
+    const { registry } = setupCursor();
+    for (const bad of [undefined, 'x', { tool: 5, pattern: '^x' }, { tool: '', pattern: '^x' }, { tool: 'Shell', pattern: 'x'.repeat(500) }, {}]) {
+      const id = registered(registry.register(cursorInput({ suggest_rule: bad, tool_input: { command: `npm test ${String(bad).length}` } })));
+      expect(registry.detail(id)!.suggestions, JSON.stringify(bad)).toBeUndefined();
+    }
+  });
+
+  it('decide com suggestion: resolve allow e persiste a regra local UMA vez (o hook não a manda de volta)', async () => {
+    const persisted: CursorRule[] = [];
+    const { registry } = setupCursor({ persistCursorRule: (r) => persisted.push(r) });
+    const id = registered(registry.register(cursorInput({ suggest_rule: { tool: 'Shell', pattern: '^npm test(\\s|$)', effect: 'deny', note: 'npm test' } })));
+    const w = registry.wait(id, 25_000)!;
+    expect(registry.decide(id, { behavior: 'allow', suggestion: 0 })).toBe('ok');
+    await expect(w.result).resolves.toEqual({ status: 'decided', behavior: 'allow', suggestion: 0 });
+    // effect forçado allow (o hook não sugere deny); o resto da regra é preservado.
+    expect(persisted).toEqual([{ tool: 'Shell', pattern: '^npm test(\\s|$)', effect: 'allow', note: 'npm test' }]);
+  });
+
+  it('decide sem suggestion (ou sugestão fora do pedido): não persiste regra', () => {
+    const persisted: CursorRule[] = [];
+    const { registry } = setupCursor({ persistCursorRule: (r) => persisted.push(r) });
+    const id = registered(registry.register(cursorInput()));
+    expect(registry.decide(id, { behavior: 'allow' })).toBe('ok');
+    const other = registered(registry.register(cursorInput({ suggest_rule: undefined, tool_input: { command: 'npm run build' } })));
+    expect(registry.decide(other, { behavior: 'allow', suggestion: 0 })).toBe('invalid');
+    expect(persisted).toEqual([]);
+  });
+
+  it('cursor aceita suggestion mas segue recusando interrupt; codex recusa os dois', () => {
+    const cursor = setupCursor().registry;
+    const cid = registered(cursor.register(cursorInput()));
+    expect(cursor.decide(cid, { behavior: 'deny', message: 'não', interrupt: true })).toBe('unsupported');
+    expect(cursor.decide(cid, { behavior: 'allow', suggestion: 0 })).toBe('ok');
+
+    const codex = setupCodex().registry;
+    const xid = registered(codex.register(codexInput()));
+    expect(codex.decide(xid, { behavior: 'allow', suggestion: 0 })).toBe('unsupported');
+    expect(codex.decide(xid, { behavior: 'deny', message: 'não', interrupt: true })).toBe('unsupported');
+    expect(codex.decide(xid, { behavior: 'deny', message: 'não' })).toBe('ok');
   });
 });
 

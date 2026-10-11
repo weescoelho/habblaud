@@ -17,9 +17,11 @@
 // terminal só pede a aprovação depois que o hook termina, então ela nunca é respondida lá enquanto ele espera).
 //
 // O Cursor (hook de decisão mod/habblaud-cursor/hook.mjs, com `provider: "cursor"` e `session_id` = conversation_id)
-// reusa as mesmas rotas: o agente casa pela conversa entre os agentes do Cursor; como no Codex, sem sugestões nem
-// perguntas, recusar só com motivo (sem interromper) e sem a busca da resposta no transcript; o título e o resumo
-// saem da tradução de ferramenta do Cursor (permissions/cursor.ts).
+// reusa as mesmas rotas: o agente casa pela conversa entre os agentes do Cursor; sem perguntas e sem a busca da
+// resposta no transcript (como no Codex), recusar só com motivo (sem interromper); o título e o resumo saem da
+// tradução de ferramenta do Cursor (permissions/cursor.ts). Diferente do Codex, o Cursor ACEITA "sempre permitir":
+// o hook manda a regra derivada em `suggest_rule` e, ao escolher essa sugestão, o servidor grava a regra local
+// (permissions/cursor-rules.ts) — a emulação do `updatedPermissions` que o Cursor não tem.
 import { randomBytes } from 'node:crypto';
 import { describeTool, maskSecrets, truncate } from '../../shared/activity';
 import { ANSWER_OTHER_MAX, answerSummary, ASK_TOOL, checkAnswers } from '../../shared/answers';
@@ -28,6 +30,7 @@ import { errMsg, log } from '../log';
 import { toolView } from '../sources/terminal';
 import { codexToolView } from './codex';
 import { cursorToolView } from './cursor';
+import type { CursorRule } from './cursor-rules';
 import { callSignature, scanToolCall } from './transcript';
 
 /** Tempo que o hook espera por padrão (ele manda o próprio em `timeout_ms`). */
@@ -83,6 +86,11 @@ export interface RegistryOptions {
   demoDecide?: (id: string, d: PermissionDecision) => boolean;
   /** Detalhe de um pedido fictício do demo (o snapshot já o traz). */
   demoDetail?: (id: string) => PermissionRequestInfo | undefined;
+  /**
+   * Cursor: grava a regra local de "sempre permitir" ao aprovar com a sugestão (o Cursor não tem
+   * `updatedPermissions`). Best-effort: a falha de escrita não invalida a decisão já tomada.
+   */
+  persistCursorRule?: (rule: CursorRule) => void;
   now?: () => number;
   /** Intervalo do relógio interno (start). */
   tickMs?: number;
@@ -107,8 +115,8 @@ export type WaitResult =
 
 /**
  * invalid = sugestão de regra desconhecida; invalid-answer = decisão que não serve para o tipo de pedido (pergunta
- * se responde com `answer`, e só ela) ou respostas que não batem com as perguntas; unsupported = o Codex/Cursor não
- * aceita (interromper ou "sempre permitir").
+ * se responde com `answer`, e só ela) ou respostas que não batem com as perguntas; unsupported = o Codex não aceita
+ * interromper nem "sempre permitir", e o Cursor não aceita interromper.
  */
 export type DecideResult = 'ok' | 'not-found' | 'conflict' | 'invalid' | 'invalid-answer' | 'unsupported';
 
@@ -136,6 +144,8 @@ interface Pending {
   sessionId: string;
   /** agent_id do hook (pedido de subagente). */
   hookAgentId?: string;
+  /** Cursor: a regra local sugerida pelo hook (persistida ao escolher "sempre permitir"). */
+  cursorRule?: CursorRule;
   signature: string;
   toolUseId?: string;
   lastScanAt: number;
@@ -164,7 +174,7 @@ function isIndex(v: unknown): v is number {
   return typeof v === 'number' && Number.isInteger(v) && v >= 0;
 }
 
-/** Pedido de um provedor cujo hook só aprova ou recusa (Codex/Cursor): sem perguntas, sugestões nem resposta no terminal. */
+/** Pedido de um provedor cujo hook só aprova ou recusa (Codex/Cursor): sem perguntas, sugestões (o Cursor tem a própria) nem resposta no terminal. */
 function hookOnly(info: { provider?: string }): boolean {
   return info.provider === 'codex' || info.provider === 'cursor';
 }
@@ -174,9 +184,11 @@ function isQuestion(info: { tool: string; provider?: string }): boolean {
   return info.tool === ASK_TOOL && !hookOnly(info);
 }
 
-/** O Codex e o Cursor não aceitam interromper nem "sempre permitir" (o hook deles só aprova ou recusa com motivo). */
+/** Codex: nem interromper nem "sempre permitir". Cursor: só interromper é recusado ("sempre permitir" é emulado). */
 function unsupportedByProvider(info: PermissionRequestInfo, d: PermissionDecision): boolean {
-  return hookOnly(info) && (d.interrupt === true || d.suggestion !== undefined);
+  if (info.provider === 'codex') return d.interrupt === true || d.suggestion !== undefined;
+  if (info.provider === 'cursor') return d.interrupt === true;
+  return false;
 }
 
 /**
@@ -225,6 +237,26 @@ function ruleText(raw: unknown): string | undefined {
   if (!tool) return undefined;
   const content = typeof r?.ruleContent === 'string' && r.ruleContent.trim() ? r.ruleContent : undefined;
   return truncate(maskSecrets(content ? `${tool}(${content})` : tool), RULE_MAX);
+}
+
+/** Texto de exibição de uma regra local do Cursor: "Shell(npm test)". */
+function cursorRuleText(rule: CursorRule): string {
+  return truncate(maskSecrets(`${rule.tool}(${rule.note ?? rule.pattern})`), RULE_MAX);
+}
+
+/**
+ * Regra local derivada que o hook do Cursor manda em `suggest_rule` (a partir do pedido). Validada aqui: só
+ * `tool`/`pattern` curtos; o `effect` é sempre `allow` (o hook não sugere `deny`).
+ */
+function parseCursorRule(raw: unknown): CursorRule | undefined {
+  const r = rec(raw);
+  const tool = shortStr(r?.tool, 200);
+  const pattern = shortStr(r?.pattern, 400);
+  if (!tool || !pattern) return undefined;
+  const rule: CursorRule = { tool, pattern, effect: 'allow' };
+  const note = shortStr(r?.note, 200);
+  if (note) rule.note = note;
+  return rule;
 }
 
 /**
@@ -278,6 +310,7 @@ export function parseHookInput(raw: unknown): {
   tool: string;
   input: Rec;
   suggestions: unknown;
+  cursorRule?: CursorRule;
   timeoutMs: number;
 } {
   const r = rec(raw);
@@ -290,7 +323,7 @@ export function parseHookInput(raw: unknown): {
     ...(provider === 'codex'
       ? { provider: 'codex' as const, account: shortStr(r.account, 200), codexHome: shortStr(r.codexHome, 4_096) }
       : provider === 'cursor'
-        ? { provider: 'cursor' as const }
+        ? { provider: 'cursor' as const, cursorRule: parseCursorRule(r.suggest_rule) }
         : {}),
     sessionId,
     agentId: shortStr(r.agent_id, 200),
@@ -427,6 +460,7 @@ export class PermissionRegistry {
     if (target.subagent) info.subagent = target.subagent;
     const suggestions = pickSuggestions(req.suggestions);
     if (suggestions.length) info.suggestions = suggestions;
+    else if (cursor && req.cursorRule) info.suggestions = [{ index: 0, rules: [cursorRuleText(req.cursorRule)], destination: 'habblaud' }];
     if (ask) info.questions = questions;
 
     const p: Pending = {
@@ -440,6 +474,7 @@ export class PermissionRegistry {
     };
     if (req.agentId) p.hookAgentId = req.agentId;
     if (ask) p.askFormat = askFormat(req.input.questions);
+    if (cursor && req.cursorRule) p.cursorRule = req.cursorRule;
     this.pending.set(id, p);
 
     const by = target.subagent ? ` (subagente ${target.subagent})` : '';
@@ -530,6 +565,8 @@ export class PermissionRegistry {
     if (d.interrupt) outcome.interrupt = true;
     if (d.suggestion !== undefined) outcome.suggestion = d.suggestion;
     this.resolve(p, outcome);
+    // Cursor: "sempre permitir" grava a regra local derivada (emula o `updatedPermissions` que ele não tem).
+    if (d.suggestion !== undefined && p.cursorRule) this.opts.persistCursorRule?.(p.cursorRule);
     const now = this.now();
     const act: Activity =
       d.behavior === 'allow'
