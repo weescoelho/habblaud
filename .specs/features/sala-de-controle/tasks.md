@@ -175,10 +175,10 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] Dois terminais do mesmo agente compartilham **uma** leitura; `/clear` (troca de transcript) e reconexão sem duplicar entradas (SC-05)
-- [ ] `init` continua sendo a janela recente; `append` em ordem; 429/500 preservados
-- [ ] Gate check passes: `npm test`
-- [ ] Test count: `server/http/terminal.test.ts` verde com os novos casos (sem remoção de teste)
+- [x] Dois terminais do mesmo agente compartilham **uma** leitura; `/clear` (troca de transcript) e reconexão sem duplicar entradas (SC-05)
+- [x] `init` continua sendo a janela recente; `append` em ordem; 429/500 preservados
+- [x] Gate check passes: `npm test`
+- [x] Test count: `server/http/terminal.test.ts` verde com os novos casos (sem remoção de teste)
 
 **Tests**: integration
 **Gate**: full
