@@ -131,7 +131,18 @@ asserção.
 
 ---
 
-## Sensor complementar — pós-fix (a preencher)
+## Sensor complementar — pós-fix (resolvido em 2026-10-11)
 
-G1 fica registrada como fix task de baixa severidade; se/quando a fiação for extraída para função pura com
-teste, replicar U4/U5 neste worktree e confirmar morte.
+O commit `4f759a4` (`refactor(cursor): testar a derivacao dos cartoes de uso`) extrai a derivação do
+`UsageCards.render()` para a função pura `usageCardsView` (`usage.ts`) — lista **e** flag `empty` — e a
+testa em `usage-source.test.ts`. Re-checagem do sensor em worktree descartável
+(`/tmp/opencode/f5-fix-wt`, com os arquivos corrigidos copiados para o HEAD):
+
+- **U5** (`empty` invertido): o caso `usageCardsView([cursor]) → {cards:[], empty:true}` **falha** com a
+  mutação → **U5 morto**.
+- **U4** (`render()` ignorando o filtro): residual **aceito conscientemente** — o repositório não monta DOM
+  nos testes (`vitest` em `environment:'node'`), então a fiação de `render()` (uma linha que agora **delega**
+  à pura) não é exercitável sem ambiente DOM; mesma natureza da fiação aceita na Fase 4 (G1). A lógica
+  (filtro + vazio) fica 100% coberta pela pura; resta só o encadeamento de uma linha.
+
+Árvore real limpa antes e depois; worktree removido; sem `git stash`.
