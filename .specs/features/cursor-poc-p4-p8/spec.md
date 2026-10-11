@@ -222,7 +222,7 @@ Each requirement gets a unique ID for tracking across design, tasks, and validat
 | CP48-20        | S5: Histórico | Design | Implementing |
 | CP48-21        | S5: Histórico | Design | Implementing |
 | CP48-22        | S6: Runbook | Design | Implementing |
-| CP48-23        | S6: Runbook | Design | Pending |
+| CP48-23        | S6: Runbook | Design | Implementing |
 
 **ID format:** `[CATEGORY]-[NUMBER]` (e.g., `AUTH-01`, `CART-03`, `NOTIF-02`)
 

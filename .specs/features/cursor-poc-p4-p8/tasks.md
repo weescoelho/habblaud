@@ -10,7 +10,7 @@ Implement these tasks with the `tlc-spec-driven` skill: **activate it by name an
 
 **Design**: `.specs/features/cursor-poc-p4-p8/design.md`
 **Spec**: `.specs/features/cursor-poc-p4-p8/spec.md`
-**Status**: Em execução (T1 ✅, T2 ✅, T3 ✅, T4 ✅, T5 ✅, T6 ✅, T7 ✅; T8 pendente)
+**Status**: T1–T8 ✅ (implementação completa; validação pendente)
 
 ---
 
@@ -311,14 +311,14 @@ T7 → T8
 
 **Done when**:
 
-- [ ] `07` ganha a tabela de resultados P4–P8 (com a ressalva do método do P4 e a ausência de fonte de uso no P8)
-- [ ] `00`/`05`/`relatorio` citam o veredicto de P4–P8 e o runbook `10`
-- [ ] `.gitignore` do repo-pai ignora `docs/cursor-export/`
-- [ ] Gate check passes: `npm run typecheck && npm test && npm run build`
+- [x] `07` ganha a tabela de resultados P4–P8 (com a ressalva do método do P4 e a ausência de fonte de uso no P8)
+- [x] `00`/`05`/`relatorio` citam o veredicto de P4–P8 e o runbook `10`
+- [x] `.gitignore` do repo-pai ignora `docs/cursor-export/`
+- [x] Gate check passes: `npm run typecheck && npm test && npm run build`
 
 **Tests**: none
 **Gate**: build
-**Status**: ⬜ Pending
+**Status**: ✅ Complete
 
 **Commit**: `docs(cursor): registrar os resultados das pocs p4-p8`
 

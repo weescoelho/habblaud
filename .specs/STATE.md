@@ -12,11 +12,11 @@
 
 ## Handoff
 
-- **Feature**: `cursor-poc` (`.specs/features/cursor-poc/`) — POCs P0–P3 (transcript, cobertura de hooks, bloqueio de decisão e ingestão no escritório)
-- **Phase / Task**: Execute concluído — T1–T18 ✅; validação independente PASS; runbook entregue; **validação ao vivo (P0–P3) concluída** na IDE do Cursor (relatório `docs/relatorio-poc-cursor-2026-10-10.md`, no repo-pai). **Lacuna C1 fechada** (2026-10-10): amostra real do transcript coletada (runbook `09`), schema mapeado e o parser ajustado. Decisão **GO** para a Fase 1. Parado antes de P4–P8 (aguardando decisão do usuário).
-- **Completed**: 18/18 tasks (T1–T18) commitadas; Fix 1 (`2e7cf02`) fechou a lacuna de CPOC-08 (rota `{ok:false}` para evento desconhecido); Verifier independente PASS (`validation.md`: 29/29 ACs, 12/13 mutações killed, M11 equivalente; gate 1224 passed / 2 skipped); `validate_state.py` exit 0; **POC ao vivo**: P1 ✅ (15 eventos na IDE), P3 ✅ (agente `cursor` no escritório, sem regressão no Codex), P2 ✅ (`allow`/`deny` nativos; bloqueio ~20 s; config 35 s), P0 ✅ (transcript JSONL legível e **tool-calls mapeados — C1 fechado** com amostra real; parser `transcript.ts` ajustado + testes).
-- **In-progress** (file:line): nada — working tree limpo na branch `cursor-poc`.
-- **Next step**: decidir P4–P8 (a Fase 1 tem **GO**); fechar a pendência do critério de ≥30 s do P2. PR upstream só com go-ahead explícito.
-- **Blockers**: nenhum bloqueante. Pendência menor: P2 ≥30 s por medir (não bloqueia a Fase 1). **C1 ✅ fechado** (schema do transcript mapeado: `{role, message:{content:[{type,text|tool_use,name,input}]}}` + `{type:"turn_ended"}`; `transcript.ts` lê o `message` aninhado e `describeCursorTool` cobre `Shell`/`StrReplace`/`CallDynamicTool`/`Glob`).
-- **Uncommitted files**: none (`.specs/` do fork versionado; `docs/analise/08-runbook-poc-cursor.md` commitado dentro do fork).
+- **Feature**: `cursor-poc-p4-p8` (`.specs/features/cursor-poc-p4-p8/`) — POCs P4–P8 (uso/plano, subagentes, CLI `stream-json`, injeção no `stop`, histórico + efeitos `git`/`gh`)
+- **Phase / Task**: Execute concluído — T1–T8 ✅ (a feature anterior `cursor-poc`/P0–P3 ficou com **GO**). Validação independente **pendente**.
+- **Completed**: 8/8 tasks commitadas (T1 `33de82e` … T8 no repo-pai `f0fcf12`); harness entregue: subcomandos `usage`/`subagents`/`cli`/`followup`/`history` + probe `mod/habblaud-cursor/followup-hook.mjs`; runbook `docs/analise/10-runbook-poc-cursor-p4-p8.md` (fork); **gate build verde** (`typecheck` + `vitest` **1265 passed / 2 skipped** + `build`). Evidência real (export do usuário): **P8** ❌ provável (sem fonte de primeira parte → ocultar cartão), **P7** sucesso parcial (2 sessões: 25 e 9 turnos), **P4** "não observado" na amostra antiga (método corrigido — hooks de subagente agora instalados).
+- **In-progress** (file:line): nada — working tree do fork limpo (o repo-pai tem o ponteiro do submodule por commitar).
+- **Next step**: rodar o **Verifier independente** (autor ≠ verificador) → escrever `.specs/features/cursor-poc-p4-p8/validation.md`, marcar os ACs como `Verified` e rodar `validate_state.py cursor-poc-p4-p8`; depois, na máquina com Cursor, executar o runbook `10` para fechar **P4** (re-teste), **P5** (stream real) e **P6** (injeção real). PR upstream só com go-ahead explícito.
+- **Blockers**: validação **ao vivo** de P4/P5/P6 pendente (exige a máquina do usuário). Pendência antiga: P2 ≥30 s por medir (não bloqueia a Fase 1).
+- **Uncommitted files**: none no fork; no repo-pai resta o **ponteiro do submodule** (`projects/habblaud-main`) e o `HANDOFF.md` (untracked).
 - **Branch**: `cursor-poc` (enviado para `origin/cursor-poc`). Remotes: `origin` = fork `weescoelho/habblaud`; `upstream` = `marmottajr/habblaud`.
