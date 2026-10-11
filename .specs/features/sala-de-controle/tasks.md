@@ -122,12 +122,12 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] `subscribe(path, consumer, opts?)` cria um `FileTail` por path e entrega o mesmo `TailRead` a todos os assinantes
-- [ ] Respeita um orçamento de leitura por ciclo e preserva a ordem numa rajada (SC-03)
-- [ ] Dois assinantes no mesmo path ⇒ **uma** leitura por ciclo (SC-05)
-- [ ] `unsubscribe()` libera o path quando o último assinante sai
-- [ ] Gate check passes: `npx vitest run server/sources/transcript-hub.test.ts`
-- [ ] Test count: arquivo verde com os casos de fan-out/rajada/`missing`/`reset` (sem remoção de teste)
+- [x] `subscribe(path, consumer, opts?)` cria um `FileTail` por path e entrega o mesmo `TailRead` a todos os assinantes
+- [x] Respeita um orçamento de leitura por ciclo e preserva a ordem numa rajada (SC-03)
+- [x] Dois assinantes no mesmo path ⇒ **uma** leitura por ciclo (SC-05)
+- [x] `unsubscribe()` libera o path quando o último assinante sai
+- [x] Gate check passes: `npx vitest run server/sources/transcript-hub.test.ts`
+- [x] Test count: arquivo verde com os casos de fan-out/rajada/`missing`/`reset` (sem remoção de teste)
 
 **Tests**: unit
 **Gate**: quick
