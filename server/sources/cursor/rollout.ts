@@ -4,10 +4,14 @@
 // O schema dos hooks do Cursor ainda não está confirmado (lacuna C1), então lemos ALIASES DEFENSIVOS para cada campo
 // (ex.: `command`/`cmd`, `cwd`/`workspace`, `conversation_id`/`conversationId`/`session_id`) e nunca lançamos por
 // causa de um campo ausente ou com tipo inesperado.
-import { describeCommand, describeTool, type ActivityDescription } from '../../../shared/activity';
-import type { AgentStatus } from '../../../shared/types';
+import { describeCommand, describeTool, maskSecrets, truncate, type ActivityDescription } from '../../../shared/activity';
+import type { ActivityKind, AgentStatus } from '../../../shared/types';
 
 type Rec = Record<string, unknown>;
+
+/** Limites do `make` de shared/activity.ts (texto do balão e detalhe). */
+const ACT_TEXT_MAX = 46;
+const ACT_DETAIL_MAX = 300;
 
 function rec(v: unknown): Rec | undefined {
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Rec) : undefined;
@@ -50,6 +54,11 @@ export interface CursorTokens {
   cacheRead: number;
   /** `cache_write_tokens`. */
   cacheWrite: number;
+}
+
+/** Activity com texto/detalhe mascarados e cortados (mesmas regras do `make` de shared/activity.ts). */
+function activity(kind: ActivityKind, icon: string, text: string, detail?: string): ActivityDescription {
+  return { kind, icon, text: truncate(maskSecrets(text), ACT_TEXT_MAX), ...(detail ? { detail: truncate(maskSecrets(detail), ACT_DETAIL_MAX) } : {}) };
 }
 
 /** Evento de hook do Cursor normalizado. */
@@ -118,8 +127,9 @@ export function parseCursorEvent(input: Record<string, unknown>): CursorEvent | 
  * volta normalizado para o `Activity.tool`.
  *
  * Cobre tanto os nomes do HOOK (`Shell`, `MCP:<tool>`) quanto os do TRANSCRIPT (P0/C1, 2026-10-10), que usa
- * nomes próprios: `StrReplace` (edição), `CallDynamicTool` (MCP dinâmico, com `namespace`/`toolName`) e `Glob`
- * com `glob_pattern` (o canonical do `describeTool` é `pattern`).
+ * nomes próprios: `StrReplace` (edição), `CallDynamicTool` (MCP dinâmico, com `namespace`/`toolName`, e o
+ * delegate `Task`) e `Glob` com `glob_pattern` (o canonical do `describeTool` é `pattern`). As ferramentas
+ * próprias do Cursor (`GetDynamicTools`, `AskQuestion`, `UpdateCurrentStep`) ganham tradução dedicada.
  */
 export function describeCursorTool(rawName: string, input: Rec): { desc: ActivityDescription; tool: string } {
   if (rawName === 'Shell') {
@@ -130,11 +140,31 @@ export function describeCursorTool(rawName: string, input: Rec): { desc: Activit
     const tool = `mcp__${rawName.slice(4)}`;
     return { desc: describeTool(tool, input), tool };
   }
+  if (rawName === 'GetDynamicTools') {
+    return { desc: activity('other', '🧰', 'Carregando as ferramentas do Cursor'), tool: rawName };
+  }
+  if (rawName === 'AskQuestion') {
+    // O Cursor usa `prompt`/`options.label`; o canonical do `describeTool` (AskUserQuestion) é
+    // `question`/`options.label` — a pergunta vira o `question` para o balão e as opções seguem.
+    const questions = Array.isArray(input.questions) ? input.questions : [];
+    const mapped = questions.map((q) => {
+      const r = rec(q);
+      return r ? { ...r, question: firstStr(r.prompt, r.question) ?? '' } : q;
+    });
+    return { desc: describeTool('AskUserQuestion', { ...input, questions: mapped }), tool: rawName };
+  }
+  if (rawName === 'UpdateCurrentStep') {
+    const step = firstStr(input.current_step, input.currentStep);
+    return { desc: activity('plan', '🧭', step ? `Etapa: ${step}` : 'Atualizando a etapa', step), tool: rawName };
+  }
   if (rawName === 'CallDynamicTool') {
     const ns = firstStr(input.namespace);
     const tool = firstStr(input.toolName);
+    const args = firstRec(input.arguments) ?? input;
+    // O Cursor dispara o delegate por aqui (`CallDynamicTool{toolName:'Task'}`): vira o Task do Claude.
+    if (tool === 'Task') return { desc: describeTool('Task', args), tool: 'Task' };
     const name = tool ? `mcp__${ns ? `${ns}__` : ''}${tool}` : rawName;
-    return { desc: describeTool(name, firstRec(input.arguments) ?? input), tool: name };
+    return { desc: describeTool(name, args), tool: name };
   }
   if (rawName === 'StrReplace') {
     return { desc: describeTool('Edit', input), tool: rawName };

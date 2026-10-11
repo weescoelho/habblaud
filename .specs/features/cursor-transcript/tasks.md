@@ -209,14 +209,14 @@ T6
 
 **Done when**:
 
-- [ ] `describeCursorTool('GetDynamicTools', {})` → `kind` `other` e texto legível (não o genérico "Usando …")
-- [ ] `describeCursorTool('AskQuestion', { questions:[{ prompt:'…' }] })` → `kind` `ask` com o texto da pergunta
-- [ ] `describeCursorTool('UpdateCurrentStep', { current_step:'…' })` → `kind` `plan` citando o passo
-- [ ] um `CallDynamicTool` com `toolName:'Task'` vira `delegate`; sem `Task`, segue `mcp__…` (caso atual)
-- [ ] um evento `preToolUse` com `tool_name` de `GetDynamicTools`/`AskQuestion`/`UpdateCurrentStep` gera a `Activity` traduzida no agente (teste da fonte), com `tasks` vazio
-- [ ] `server/sources/cursor/rollout.test.ts` e `server/sources/cursor/source.test.ts` cobrem os casos acima
-- [ ] Gate check passes: `npm test`
-- [ ] Test count: 16+ casos passam (sem deleções silenciosas)
+- [x] `describeCursorTool('GetDynamicTools', {})` → `kind` `other` e texto legível (não o genérico "Usando …")
+- [x] `describeCursorTool('AskQuestion', { questions:[{ prompt:'…' }] })` → `kind` `ask` com o texto da pergunta
+- [x] `describeCursorTool('UpdateCurrentStep', { current_step:'…' })` → `kind` `plan` citando o passo
+- [x] um `CallDynamicTool` com `toolName:'Task'` vira `delegate`; sem `Task`, segue `mcp__…` (caso atual)
+- [x] um evento `preToolUse` com `tool_name` de `GetDynamicTools`/`AskQuestion`/`UpdateCurrentStep` gera a `Activity` traduzida no agente (teste da fonte), com `tasks` vazio
+- [x] `server/sources/cursor/rollout.test.ts` e `server/sources/cursor/source.test.ts` cobrem os casos acima
+- [x] Gate check passes: `npm test`
+- [x] Test count: 16+ casos passam (sem deleções silenciosas)
 
 **Tests**: unit
 **Gate**: full

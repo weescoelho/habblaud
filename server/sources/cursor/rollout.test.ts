@@ -153,6 +153,36 @@ describe('describeCursorTool', () => {
   it('ferramenta desconhecida passa pelo describeTool', () => {
     expect(describeCursorTool('Magic', {})).toEqual({ desc: describeTool('Magic', {}), tool: 'Magic' });
   });
+
+  it('GetDynamicTools → other com texto próprio (não o genérico "Usando …")', () => {
+    const r = describeCursorTool('GetDynamicTools', {});
+    expect(r.tool).toBe('GetDynamicTools');
+    expect(r.desc.kind).toBe('other');
+    expect(r.desc.text).toContain('ferramentas do Cursor');
+    expect(r.desc.text).not.toMatch(/^Usando /);
+  });
+
+  it('AskQuestion → ask usando o prompt do Cursor como pergunta', () => {
+    const r = describeCursorTool('AskQuestion', { title: 'Qual caminho?', questions: [{ id: 'q1', prompt: 'Qual caminho seguir?' }] });
+    expect(r.tool).toBe('AskQuestion');
+    expect(r.desc.kind).toBe('ask');
+    expect(r.desc.text).toBe('Fazendo uma pergunta a você');
+    expect(r.desc.detail).toBe('Qual caminho seguir?');
+  });
+
+  it('UpdateCurrentStep → plan citando o passo', () => {
+    const r = describeCursorTool('UpdateCurrentStep', { current_step: 'Rodando os testes' });
+    expect(r.tool).toBe('UpdateCurrentStep');
+    expect(r.desc.kind).toBe('plan');
+    expect(r.desc.text).toContain('Rodando os testes');
+  });
+
+  it('CallDynamicTool com toolName Task vira delegate; sem Task segue mcp__', () => {
+    const task = describeCursorTool('CallDynamicTool', { namespace: 'cursor', toolName: 'Task', arguments: { description: 'Fazer X', prompt: 'p' } });
+    expect(task).toEqual({ desc: describeTool('Task', { description: 'Fazer X', prompt: 'p' }), tool: 'Task' });
+    expect(task.desc.kind).toBe('delegate');
+    expect(describeCursorTool('CallDynamicTool', { namespace: 'cursor', toolName: 'list_repos' }).tool).toBe('mcp__cursor__list_repos');
+  });
 });
 
 describe('statusBorder', () => {

@@ -225,6 +225,22 @@ describe('fonte do Cursor: presença por hooks', () => {
     expect(ctx.agent()?.tasks).toEqual([]);
   });
 
+  it('preToolUse de ferramenta própria do Cursor gera Activity traduzida (não o genérico), com tasks vazio', () => {
+    const ctx = setup();
+    ctx.hook(ev('sessionStart'));
+    ctx.hook(ev('preToolUse', { tool_name: 'GetDynamicTools' }));
+    expect(ctx.agent()?.activity).toMatchObject({ kind: 'other', tool: 'GetDynamicTools' });
+    expect(ctx.agent()?.activity?.text).not.toMatch(/^Usando /);
+    ctx.advance(10);
+    ctx.hook(ev('preToolUse', { tool_name: 'AskQuestion', tool_input: { title: 'Qual caminho?' } }));
+    expect(ctx.agent()?.activity).toMatchObject({ kind: 'ask', tool: 'AskQuestion' });
+    ctx.advance(10);
+    ctx.hook(ev('preToolUse', { tool_name: 'UpdateCurrentStep', tool_input: { current_step: 'Rodando os testes' } }));
+    expect(ctx.agent()?.activity).toMatchObject({ kind: 'plan', tool: 'UpdateCurrentStep' });
+    expect(ctx.agent()?.activity?.text).toContain('Rodando os testes');
+    expect(ctx.agent()?.tasks).toEqual([]);
+  });
+
   it('conta única registrada: id cursor, nome Cursor, short/color sem colidir; sources() reflete as sessões', () => {
     const ctx = setup();
     ctx.hook(ev('sessionStart'));
