@@ -177,13 +177,13 @@ T6
 
 **Done when**:
 
-- [ ] um `stop` com os quatro campos reflete `stats.tokensIn = input+read+write` e `stats.tokensOut = output` no snapshot do Office
-- [ ] um `afterAgentResponse` só com `output_tokens` **soma** ao acumulado
-- [ ] um evento sem tokens (ou com campo não numérico) não muda os números
-- [ ] `tasks` do agente segue vazio (nenhum `TaskItem` derivado)
-- [ ] `server/sources/cursor/source.test.ts` cobre os casos acima
-- [ ] Gate check passes: `npx vitest run server/sources/cursor/source.test.ts`
-- [ ] Test count: 14+ casos passam (sem deleções silenciosas)
+- [x] um `stop` com os quatro campos reflete `stats.tokensIn = input+read+write` e `stats.tokensOut = output` no snapshot do Office
+- [x] um `afterAgentResponse` só com `output_tokens` **soma** ao acumulado
+- [x] um evento sem tokens (ou com campo não numérico) não muda os números
+- [x] `tasks` do agente segue vazio (nenhum `TaskItem` derivado)
+- [x] `server/sources/cursor/source.test.ts` cobre os casos acima
+- [x] Gate check passes: `npx vitest run server/sources/cursor/source.test.ts`
+- [x] Test count: 14+ casos passam (sem deleções silenciosas)
 
 **Tests**: unit
 **Gate**: quick

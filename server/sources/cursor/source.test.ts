@@ -209,6 +209,22 @@ describe('fonte do Cursor: presença por hooks', () => {
     expect(ctx.source.terminalParser('cursor:ninguem')).toBeUndefined();
   });
 
+  it('tokens dos hooks viram stats do agente no Office (soma, sem regredir; tasks sempre vazio)', () => {
+    const ctx = setup();
+    ctx.hook(ev('sessionStart'));
+    ctx.hook(ev('stop', { input_tokens: 100, output_tokens: 40, cache_read_tokens: 20, cache_write_tokens: 5 }));
+    expect(ctx.agent()?.stats).toMatchObject({ tokensIn: 125, tokensOut: 40 });
+    // afterAgentResponse só com output soma ao acumulado.
+    ctx.hook(ev('afterAgentResponse', { output_tokens: 10 }));
+    expect(ctx.agent()?.stats).toMatchObject({ tokensIn: 125, tokensOut: 50 });
+    // Evento sem tokens (ou com campo não numérico) não muda os números.
+    ctx.hook(ev('afterAgentResponse'));
+    ctx.hook(ev('afterAgentResponse', { output_tokens: 'x' }));
+    expect(ctx.agent()?.stats).toMatchObject({ tokensIn: 125, tokensOut: 50 });
+    // Sem checklist no transcript: nenhuma tarefa é derivada.
+    expect(ctx.agent()?.tasks).toEqual([]);
+  });
+
   it('conta única registrada: id cursor, nome Cursor, short/color sem colidir; sources() reflete as sessões', () => {
     const ctx = setup();
     ctx.hook(ev('sessionStart'));

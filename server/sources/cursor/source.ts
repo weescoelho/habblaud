@@ -9,7 +9,7 @@
 //
 // Status: aplicado por bordas (decide), a informação mais nova vence (statusAt): um evento atrasado não regride.
 import { join, resolve } from 'node:path';
-import type { Activity, AgentStatus, SourceInfo } from '../../../shared/types';
+import type { Activity, AgentStats, AgentStatus, SourceInfo } from '../../../shared/types';
 import { ACCOUNT_COLORS, type DetectedAccount } from '../../accounts/detect';
 import type { AccountEntry, AccountsService } from '../../accounts/service';
 import { log } from '../../log';
@@ -73,6 +73,8 @@ interface CursorTracker {
   inOffice: boolean;
   /** Arquivo do transcript da conversa (só gravado quando um evento traz caminho não vazio; nunca limpo). */
   transcriptPath?: string;
+  /** Tokens acumulados dos eventos de hook (refletidos no Office). */
+  stats: AgentStats;
 }
 
 export class CursorSource implements AgentSource, CursorLive {
@@ -170,15 +172,33 @@ export class CursorSource implements AgentSource, CursorLive {
     if (t) {
       t.lastHookAt = now;
     } else {
-      t = { key, conversationId, account: this.accountId, status: 'idle', statusAt: 0, lastHookAt: now, startedAt: now, inOffice: false };
+      t = {
+        key,
+        conversationId,
+        account: this.accountId,
+        status: 'idle',
+        statusAt: 0,
+        lastHookAt: now,
+        startedAt: now,
+        inOffice: false,
+        stats: { toolCalls: 0, tokensIn: 0, tokensOut: 0, subagents: 0 },
+      };
       this.trackers.set(key, t);
     }
     if (!t.cwd) t.cwd = event.workspaceRoot ?? event.cwd;
     // O caminho do transcript é estável por conversa: grava quando vem não vazio e nunca limpa (eventos
     // parciais como beforeReadFile trazem `null`, que não pode apagar um caminho bom).
     if (event.transcriptPath) t.transcriptPath = event.transcriptPath;
+    // Tokens: soma o que o evento trouxer; nenhum campo ausente zera o acumulado.
+    if (event.tokens) {
+      t.stats.tokensIn += event.tokens.input + event.tokens.cacheRead + event.tokens.cacheWrite;
+      t.stats.tokensOut += event.tokens.output;
+    }
     this.reconcile(t);
     if (!t.inOffice) return true;
+
+    // Reflete os tokens acumulados no Office (tarefas ficam vazias: o transcript não traz checklist).
+    if (event.tokens) this.opts.office.applyTranscript(t.key, { tasks: [], stats: { ...t.stats } });
 
     const border = statusBorder(event.name);
     if (border) this.decide(t, border.status, now, border.waitingFor);
