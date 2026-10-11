@@ -149,11 +149,11 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] Evento do `fs.watch` dispara `tick()` imediatamente; sem `fs.watch` vale o polling (SC-04)
-- [ ] `schedule()` agrupa eventos próximos (anti-trovão), como no `watcher.ts`
-- [ ] Medição sintética: linha gravada → entregue ≤300 ms (p95) com watch ativo (SC-01)
-- [ ] Gate check passes: `npx vitest run server/sources/transcript-hub.test.ts`
-- [ ] Test count: casos de watch-atômico e fallback verde (sem remoção de teste)
+- [x] Evento do `fs.watch` dispara `tick()` imediatamente; sem `fs.watch` vale o polling (SC-04)
+- [x] `schedule()` agrupa eventos próximos (anti-trovão), como no `watcher.ts`
+- [x] Medição sintética: linha gravada → entregue ≤300 ms (p95) com watch ativo (SC-01)
+- [x] Gate check passes: `npx vitest run server/sources/transcript-hub.test.ts`
+- [x] Test count: casos de watch-atômico e fallback verde (sem remoção de teste)
 
 **Tests**: unit
 **Gate**: quick

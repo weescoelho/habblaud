@@ -3,7 +3,7 @@
 // `missing`/`reset` e a liberação do path quando o último assinante sai. Fixtures SINTÉTICAS.
 import { truncateSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { appendLines, tempDir, writeLines } from '../test/fixtures';
 import type { TailRead } from './tail';
 import { FileTail } from './tail';
@@ -152,5 +152,80 @@ describe('TranscriptHub', () => {
     expect(tails).toHaveLength(2);
     hub.close();
     expect(hub.size).toBe(0);
+  });
+
+  it('watch: um evento antecipa o ciclo e os próximos são agrupados (anti-trovão)', () => {
+    vi.useFakeTimers();
+    try {
+      writeLines(file, ['x']);
+      const triggers: Array<() => void> = [];
+      const hub = new TranscriptHub({
+        intervalMs: 10_000,
+        watchDelayMs: 100,
+        watchFactory: (_path, cb) => {
+          triggers.push(cb);
+          return { close() {} };
+        },
+      });
+      const c = collector();
+      hub.subscribe(file, c);
+      appendLines(file, ['nova']);
+      expect(triggers).toHaveLength(1); // o observador foi armado no path
+      triggers[0]();
+      triggers[0]();
+      triggers[0]();
+      expect(c.reads).toHaveLength(0); // ainda dentro da janela de agrupamento
+      vi.advanceTimersByTime(100);
+      expect(c.reads).toHaveLength(1); // três eventos ⇒ um só ciclo
+      expect(c.reads[0].lines).toEqual(['nova']);
+      hub.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('sem watch (desligado ou indisponível) o polling entrega (SC-04)', async () => {
+    writeLines(file, []);
+    for (const opts of [{ useWatch: false }, { watchFactory: () => null }] as const) {
+      const hub = new TranscriptHub({ intervalMs: 20, ...opts });
+      const got = new Promise<string[]>((resolve) => {
+        hub.subscribe(file, {
+          onRead: (r) => {
+            if (r.lines.length) resolve(r.lines);
+          },
+        });
+      });
+      appendLines(file, ['via-polling']);
+      await expect(got).resolves.toEqual(['via-polling']);
+      hub.close();
+    }
+  });
+
+  it('watch ativo: linha gravada é entregue em ≤300 ms (p95) (SC-01)', async () => {
+    writeLines(file, []);
+    // Intervalo de polling alto: o que entregar dentro do limite só pode vir do watch.
+    const hub = new TranscriptHub({ intervalMs: 2_000, watchDelayMs: 60 });
+    let pending: ((at: number) => void) | null = null;
+    hub.subscribe(file, {
+      onRead: (r) => {
+        if (!r.lines.length || !pending) return;
+        const done = pending;
+        pending = null;
+        done(Date.now());
+      },
+    });
+    const lat: number[] = [];
+    for (let i = 0; i < 10; i++) {
+      const delivered = new Promise<number>((resolve) => {
+        pending = resolve;
+      });
+      const at = Date.now();
+      appendLines(file, [`linha-${i}`]);
+      lat.push((await delivered) - at);
+    }
+    hub.close();
+    lat.sort((a, b) => a - b);
+    const p95 = lat[Math.ceil(0.95 * lat.length) - 1];
+    expect(p95).toBeLessThanOrEqual(300);
   });
 });
