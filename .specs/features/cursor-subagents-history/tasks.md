@@ -180,14 +180,14 @@ T8
 
 **Done when**:
 
-- [ ] `cursorGitHubCall('Shell', { command:'git push origin main' })` devolve uma `GitHubCall` de `Bash` com a op `push` (via `githubCallOf`)
-- [ ] `cursorGitHubCall('Shell', { command:'ls' })` e `cursorGitHubCall('Read', …)` devolvem `undefined`
-- [ ] sem resultado: `git push origin main` → `{ kind:'push' }`; `git push --dry-run`/`--delete` → `undefined`; `gh pr create --title x` → `pr_opened`; `gh pr merge 12` → `pr_merged` (com `number`); `gh pr merge --auto` → `undefined`
-- [ ] com resultado (um `result` que o `detectGitHubResult` entende) a decisão vem do resultado (ex.: `git push` que falhou **não** emite)
-- [ ] CI/release do Cursor (`gh run watch`, `gh release create`) devolvem `undefined` (desfecho desconhecido: fora do escopo)
-- [ ] `server/sources/cursor/github.test.ts` cobre os casos acima
-- [ ] Gate check passes: `npx vitest run server/sources/cursor/github.test.ts`
-- [ ] Test count: 10+ casos passam (sem deleções silenciosas)
+- [x] `cursorGitHubCall('Shell', { command:'git push origin main' })` devolve uma `GitHubCall` de `Bash` com a op `push` (via `githubCallOf`)
+- [x] `cursorGitHubCall('Shell', { command:'ls' })` e `cursorGitHubCall('Read', …)` devolvem `undefined`
+- [x] sem resultado: `git push origin main` → `{ kind:'push' }`; `git push --dry-run`/`--delete` → `undefined`; `gh pr create --title x` → `pr_opened`; `gh pr merge 12` → `pr_merged` (com `number`); `gh pr merge --auto` → `undefined`
+- [x] com resultado (um `result` que o `detectGitHubResult` entende) a decisão vem do resultado (ex.: `git push` que falhou **não** emite)
+- [x] CI/release do Cursor (`gh run watch`, `gh release create`) devolvem `undefined` (desfecho desconhecido: fora do escopo)
+- [x] `server/sources/cursor/github.test.ts` cobre os casos acima
+- [x] Gate check passes: `npx vitest run server/sources/cursor/github.test.ts`
+- [x] Test count: 10+ casos passam (sem deleções silenciosas)
 
 **Tests**: unit
 **Gate**: quick
