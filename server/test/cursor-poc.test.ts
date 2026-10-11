@@ -14,12 +14,13 @@ const HOOK = resolve(__dirname, '../../mod/habblaud-cursor/poc-hook.mjs');
 const ROOT = resolve(__dirname, '../..');
 
 /** Roda o harness como o usuário rodaria: `node --import tsx scripts/cursor-poc.ts <args>`. */
-function cli(args: string[], env: NodeJS.ProcessEnv = {}) {
+function cli(args: string[], env: NodeJS.ProcessEnv = {}, input?: string) {
   return spawnSync(process.execPath, ['--import', 'tsx', SCRIPT, ...args], {
     encoding: 'utf8',
     timeout: 30_000,
     cwd: ROOT,
     env: { ...process.env, ...env },
+    ...(input !== undefined ? { input } : {}),
   });
 }
 
@@ -477,5 +478,51 @@ describe('cursor-poc.ts subagents (P4)', () => {
     const r = cli(['subagents'], { HOME: home });
     expect(r.status).toBe(0);
     expect(r.stdout).toMatch(/par s3/);
+  });
+});
+
+/** NDJSON sintético no formato do `cursor-agent -p --output-format stream-json`. */
+const CLI_STREAM = [
+  JSON.stringify({ type: 'system', session_id: 'sess-1', model: 'x' }),
+  JSON.stringify({ type: 'assistant', message: { content: 'oi' } }),
+  JSON.stringify({ type: 'tool_call', tool_name: 'Read' }),
+  JSON.stringify({ type: 'tool_call', name: 'Grep' }),
+  JSON.stringify({ type: 'result', subtype: 'success' }),
+  '{ linha corrompida',
+].join('\n') + '\n';
+
+describe('cursor-poc.ts cli (P5)', () => {
+  it('--path <arquivo>: conta tipos, extrai session_id, diversidade e ilegíveis', () => {
+    const r = cli(['cli', '--path', write('stream.ndjson', CLI_STREAM)]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('sess-1');
+    expect(r.stdout).toMatch(/system\s+1/);
+    expect(r.stdout).toMatch(/assistant\s+1/);
+    expect(r.stdout).toMatch(/tool_call\s+2/);
+    expect(r.stdout).toMatch(/result\s+1/);
+    expect(r.stdout).toMatch(/Ferramentas: 2 distintas, 2 chamadas/);
+    expect(r.stdout).toMatch(/Read\s+1/);
+    expect(r.stdout).toMatch(/Grep\s+1/);
+    expect(r.stdout).toMatch(/ileg[íi]veis:\s*1/);
+  });
+
+  it('sem --path: lê o stream do stdin', () => {
+    const r = cli(['cli'], {}, CLI_STREAM);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('sess-1');
+    expect(r.stdout).toMatch(/tool_call\s+2/);
+  });
+
+  it('stream vazio: contagens zeradas e saída 0', () => {
+    const r = cli(['cli']);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/Eventos: 0/);
+    expect(r.stdout).toMatch(/ileg[íi]veis:\s*0/);
+  });
+
+  it('--path inexistente: erro e código ≠ 0', () => {
+    const r = cli(['cli', '--path', join(tmp.dir, 'nao-existe.ndjson')]);
+    expect(r.status).not.toBe(0);
+    expect(`${r.stdout}${r.stderr}`).toMatch(/não encontrado/i);
   });
 });

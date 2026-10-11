@@ -10,7 +10,7 @@ Implement these tasks with the `tlc-spec-driven` skill: **activate it by name an
 
 **Design**: `.specs/features/cursor-poc-p4-p8/design.md`
 **Spec**: `.specs/features/cursor-poc-p4-p8/spec.md`
-**Status**: Em execução (T1 ✅, T2 ✅; T3–T8 pendentes)
+**Status**: Em execução (T1 ✅, T2 ✅, T3 ✅; T4–T8 pendentes)
 
 ---
 
@@ -160,16 +160,16 @@ T7 → T8
 
 **Done when**:
 
-- [ ] `parseCliStream(text)` conta tipos, extrai `session_id` e soma ferramentas (`tool_call.tool_name|name`, `tool_calls[].function.name`)
-- [ ] `cli --path <arquivo>` sobre NDJSON sintético (`system`,`assistant`,2 `tool_call` de nomes distintos,`result`,1 linha corrompida) reporta contagens, `session_id`, diversidade e ilegíveis; sem `--path` → lê `stdin`
-- [ ] Stream vazio → contagens zeradas e saída `0`
-- [ ] `server/test/cursor-poc.test.ts` cobre os casos acima
-- [ ] Gate check passes: `npx vitest run server/test/cursor-poc.test.ts`
-- [ ] Test count: 4+ casos passam (sem deleções silenciosas)
+- [x] `parseCliStream(text)` conta tipos, extrai `session_id` e soma ferramentas (`tool_call.tool_name|name`, `tool_calls[].function.name`)
+- [x] `cli --path <arquivo>` sobre NDJSON sintético (`system`,`assistant`,2 `tool_call` de nomes distintos,`result`,1 linha corrompida) reporta contagens, `session_id`, diversidade e ilegíveis; sem `--path` → lê `stdin`
+- [x] Stream vazio → contagens zeradas e saída `0`
+- [x] `server/test/cursor-poc.test.ts` cobre os casos acima
+- [x] Gate check passes: `npx vitest run server/test/cursor-poc.test.ts`
+- [x] Test count: 4+ casos passam (sem deleções silenciosas)
 
 **Tests**: unit
 **Gate**: quick
-**Status**: ⬜ Pending
+**Status**: ✅ Complete
 
 **Commit**: `feat(cursor): subcomando cli para o stream-json (p5)`
 

@@ -5,6 +5,7 @@
 //   npm run cursor:poc:uninstall  [-- --project [dir]]  # remove só os hooks do harness
 //   npm run cursor:poc:report                           # matriz "evento → dispara? (contagem) → campos"
 //   npm run cursor:poc:subagents                        # correlaciona subagentStart/subagentStop (P4)
+//   npm run cursor:poc:cli        [-- --path <arquivo>] # caracteriza o NDJSON do cursor-agent (P5)
 //   npm run cursor:poc:usage      [-- --path <dir>]     # lista os candidatos de uso/plano do Cursor (P8)
 //   npm run cursor:poc:decision   [-- --hold N]         # mede o bloqueio do hook de decisão contra um stub local
 //
@@ -64,6 +65,8 @@ const USAGE = `Uso: npm run cursor:poc:<subcomando> -- [opções]
                                 "evento → dispara? (contagem) → campos"
   subagents                     lê o diretório de captura e correlaciona
                                 subagentStart/subagentStop por id (pares, órfãos, sem id)
+  cli [--path <arquivo>]        lê o NDJSON do CLI (cursor-agent -p --output-format
+                                stream-json) do arquivo ou do stdin e conta tipos/ferramentas
   usage [--path <dir>]          varre os locais de uso/plano do Cursor (~/.cursor,
                                 ~/.cursor-server, ~/.config/Cursor; ou --path) e lista os
                                 candidatos (JSON: chaves de topo; SQLite: tabelas+contagens),
@@ -89,6 +92,7 @@ export type RunOptions =
   | { command: 'uninstall'; project: string | boolean }
   | { command: 'report' }
   | { command: 'subagents' }
+  | { command: 'cli'; path?: string }
   | { command: 'usage'; path?: string }
   | { command: 'decision'; holdS: number; limitS: number };
 
@@ -143,6 +147,19 @@ export function parseArgs(argv: string[]): RunOptions | 'help' {
   if (command === 'subagents') {
     if (rest.length) throw new FatalError(`opção desconhecida: ${rest[0]}`);
     return { command: 'subagents' };
+  }
+  if (command === 'cli') {
+    let path: string | undefined;
+    for (let i = 0; i < rest.length; i++) {
+      const a = rest[i];
+      if (a === '--path') {
+        path = rest[++i];
+        if (!path) throw new FatalError('--path precisa de um arquivo.');
+      } else {
+        throw new FatalError(`opção desconhecida: ${a}`);
+      }
+    }
+    return { command: 'cli', path };
   }
   if (command === 'usage') {
     let path: string | undefined;
@@ -517,6 +534,91 @@ export function correlateSubagents(events: readonly CapturedEvent[]): SubagentCo
   return { pairs, orphans, uncorrelated, total };
 }
 
+// ---------------------------------------------------------------- cli (P5)
+
+/** Resumo do NDJSON do CLI: contagem por tipo, ferramentas, `session_id` e linhas ilegíveis. */
+export interface CliSummary {
+  kinds: Map<string, number>;
+  tools: Map<string, number>;
+  sessionId?: string;
+  malformed: number;
+}
+
+/** Primeira string útil (aliases defensivos); `undefined` se nenhuma. */
+function firstString(...vals: unknown[]): string | undefined {
+  for (const v of vals) if (typeof v === 'string' && v.trim()) return v;
+  return undefined;
+}
+
+/** Nomes de ferramenta citados por um evento do stream, cobrindo os dois estilos conhecidos. */
+function toolNamesOf(kind: string, rec: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  const add = (v: unknown): void => {
+    const s = firstString(v);
+    if (s) out.push(s);
+  };
+  const single = isObject(rec.tool_call) ? rec.tool_call : undefined;
+  if (single) add(firstString(single.tool_name, single.toolName, single.name));
+  if (Array.isArray(rec.tool_calls)) {
+    for (const item of rec.tool_calls) {
+      if (!isObject(item)) continue;
+      const fn = isObject(item.function) ? item.function : undefined;
+      add(firstString(fn?.name, item.name, item.tool_name));
+    }
+  }
+  if (kind === 'tool_call' || kind === 'tool_use' || kind === 'tool') {
+    add(firstString(rec.tool_name, rec.toolName, rec.name));
+  }
+  return out;
+}
+
+/**
+ * Caracteriza um NDJSON do CLI: conta os tipos (`type`/`kind`/`event`), extrai o `session_id` e os
+ * nomes de ferramenta, e conta as linhas não-JSON como ilegíveis (linhas vazias são puladas).
+ * Nunca lança.
+ */
+export function parseCliStream(text: string): CliSummary {
+  const kinds = new Map<string, number>();
+  const tools = new Map<string, number>();
+  let sessionId: string | undefined;
+  let malformed = 0;
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    let rec: Record<string, unknown> | undefined;
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      rec = isObject(parsed) ? parsed : undefined;
+    } catch {
+      rec = undefined;
+    }
+    if (!rec) {
+      malformed++;
+      continue;
+    }
+    const kind = firstString(rec.type, rec.kind, rec.event) ?? '(sem tipo)';
+    kinds.set(kind, (kinds.get(kind) ?? 0) + 1);
+    if (!sessionId) sessionId = firstString(rec.session_id, rec.sessionId);
+    for (const name of toolNamesOf(kind, rec)) tools.set(name, (tools.get(name) ?? 0) + 1);
+  }
+  return { kinds, tools, sessionId, malformed };
+}
+
+/** Relatório legível do resumo do CLI (session_id, tipos e ferramentas). */
+export function formatCliSummary(s: CliSummary): string[] {
+  const total = [...s.kinds.values()].reduce((a, b) => a + b, 0);
+  const calls = [...s.tools.values()].reduce((a, b) => a + b, 0);
+  const byName = (a: [string, number], b: [string, number]): number => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
+  return [
+    `Session-id: ${s.sessionId ?? '(nenhum)'}`,
+    `Eventos: ${total} · ilegíveis: ${s.malformed}`,
+    'Tipos:',
+    ...[...s.kinds.entries()].sort(byName).map(([k, n]) => `  ${k}  ${n}`),
+    `Ferramentas: ${s.tools.size} distintas, ${calls} chamadas`,
+    ...[...s.tools.entries()].sort(byName).map(([k, n]) => `  ${k}  ${n}`),
+  ];
+}
+
 // ---------------------------------------------------------------- usage (P8)
 
 /** Um candidato a arquivo de uso/plano encontrado na varredura (só metadados; nunca o conteúdo). */
@@ -650,6 +752,8 @@ export async function run(opts: RunOptions, ctx: RunContext): Promise<number> {
       return runReport(ctx);
     case 'subagents':
       return runSubagents(ctx);
+    case 'cli':
+      return runCli(opts, ctx);
     case 'usage':
       return runUsage(opts, ctx);
     case 'decision':
@@ -725,6 +829,39 @@ function runReport(ctx: RunContext): number {
     return 0;
   }
   for (const line of reportMatrix(events)) ctx.out(line);
+  return 0;
+}
+
+/** Lê todo o `stdin` como texto; sem entrada (TTY) devolve string vazia (stream vazio). */
+function readStdin(): Promise<string> {
+  if (process.stdin.isTTY) return Promise.resolve('');
+  return new Promise((resolve) => {
+    let data = '';
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk: string) => (data += chunk));
+    process.stdin.on('end', () => resolve(data));
+    process.stdin.on('error', () => resolve(data));
+  });
+}
+
+/** Caracteriza o NDJSON do CLI (`--path` ou `stdin`). Arquivo ausente/ilegível → erro e código ≠ 0. */
+async function runCli(opts: { path?: string }, ctx: RunContext): Promise<number> {
+  let text: string;
+  if (opts.path) {
+    if (!existsSync(opts.path)) {
+      ctx.err(`✗ Arquivo não encontrado: ${opts.path}`);
+      return 1;
+    }
+    try {
+      text = readFileSync(opts.path, 'utf8');
+    } catch {
+      ctx.err(`✗ não consegui ler ${opts.path}.`);
+      return 1;
+    }
+  } else {
+    text = await readStdin();
+  }
+  for (const line of formatCliSummary(parseCliStream(text))) ctx.out(line);
   return 0;
 }
 
