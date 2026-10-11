@@ -86,6 +86,23 @@ npm run cursor:status      # eventos de decisão, nº de regras e nº de decisõ
 npm run cursor:uninstall   # remove só o hook do Habblaud
 ```
 
+### Outra máquina: um comando só (`cursor:setup`)
+
+Numa máquina nova, depois de clonar a branch (`cursor-poc`) e rodar `npm install`, o `setup` faz de
+uma vez o que os passos manuais fazem: **tira a POC** (o `poc-hook.mjs`, que só observa e nunca
+decide), instala o hook real nos 15 eventos e **grava a camada base** (regras locais + `permissions.json`).
+
+```bash
+git clone -b cursor-poc <fork> && cd <repo> && npm install
+npm run cursor:setup        # --dry-run mostra o que faria, sem gravar nada
+npm run cursor:status       # confere hook instalado + nº de regras
+```
+
+É idempotente e não sobrescreve escolhas do usuário: só semeia `~/.habblaud/cursor-hook.json` quando
+ainda **não há regras**, e **mergeia** as instruções em `~/.cursor/permissions.json` (com backup
+antes de mudar). Ao final, **reinicie o Cursor** e escolha o Run Mode **Auto-review** (Settings >
+Agents > Approvals & Execution) — é o que faz o `hooks.json`/`permissions.json` valerem.
+
 ### Arquivo de política `~/.habblaud/cursor-hook.json`
 
 ```jsonc
@@ -163,7 +180,8 @@ vence o `allow`).
 ### Desligar de vez os pedidos de comando (padrão "não perguntar nada")
 
 Quem quer que `cd`, comandos fixos (`npm run build`) e scripts próprios **nunca** peçam, sem
-precisar aprovar um a um, configura duas camadas:
+precisar aprovar um a um, configura duas camadas — é exatamente o que `npm run cursor:setup` grava
+(vide "Outra máquina"):
 
 1. **Base do Cursor** — `~/.cursor/permissions.json` + Run Mode **Auto-review** (Settings > Agents >
    Approvals & Execution): uma `allow_instructions` cobre `cd`, `pwd`, `ls`, `git status/branch/log/diff`,
@@ -177,7 +195,8 @@ precisar aprovar um a um, configura duas camadas:
   "rules": [
     { "tool": "Shell", "pattern": "^rm(\\s|$)", "effect": "deny", "note": "apagar arquivos" },
     { "tool": "Shell", "pattern": "^sudo(\\s|$)", "effect": "deny", "note": "sudo" },
-    { "tool": "Shell", "pattern": "^chmod(\\s|$)", "effect": "deny", "note": "permissões" },
+    { "tool": "Shell", "pattern": "^su(\\s|$)", "effect": "deny", "note": "trocar de usuário" },
+    { "tool": "Shell", "pattern": "^chmod(\\s|$)", "effect": "deny", "note": "permissões de arquivo" },
     { "tool": "Shell", "pattern": "^git push.*-f(\\s|$)", "effect": "deny", "note": "force push" },
     { "tool": "Shell", "pattern": "\\|\\s*(sh|bash)(\\s|$)", "effect": "deny", "note": "script baixado na hora" },
     { "tool": "Shell", "pattern": ".*", "effect": "allow", "note": "demais comandos" }
@@ -224,6 +243,9 @@ saem quando estoura).
 
 ## 6. Verificação (checklist)
 
+- [ ] `npm run cursor:setup` numa casa limpa cria `~/.cursor/hooks.json` (15 eventos),
+      `~/.habblaud/cursor-hook.json` (7 regras) e `~/.cursor/permissions.json`; rodar de novo não muda
+      nada (idempotente) e respeita regras/permissões já existentes.
 - [ ] `npm run cursor:install` e `npm run cursor:status` mostram o hook instalado e os eventos de
       decisão (padrão: `beforeShellExecution`, `beforeMCPExecution`).
 - [ ] Uma leitura de arquivo no Cursor **não** abre cartão no Habblaud (`beforeReadFile` é
