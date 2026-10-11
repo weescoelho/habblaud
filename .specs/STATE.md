@@ -21,10 +21,10 @@
 ## Handoff
 
 - **Feature**: `sala-de-controle` (`.specs/features/sala-de-controle/`) — observabilidade em tempo real, triagem, controle de agentes e salas por projeto (8 histórias `SC-01..SC-40`). Pré-requisitos corrigidos: `CSH-06` (fio do hook de subagente) e `CSH-22` (terminal do sub).
-- **Phase / Task**: **Design + Tasks finalizados e validados** — `validate_spec.py` 0/0; `validate_tasks.py` 0 erros / 12 avisos (avisos = `Tests: none` de tarefas de tipo/wiring/hook, já declaradas como `none` na matriz de cobertura). 34 tasks / 8 fases. Aguardando a decisão do usuário sobre o **Execute** (offer de sub-agentes obrigatório: 34 > 1 batch).
-- **Completed** (recente): bugfix `CSH-06` (17 eventos em `EVENTS`+`OBSERVED`) e `CSH-22` (transcript próprio do sub resolvido no Stop). Artefatos da `sala-de-controle` (spec/context/design/tasks) commitados; runbook `12` e o bugfix `CSH-22` já commitados.
-- **In-progress** (file:line): nenhum código; `.specs/features/sala-de-controle/tasks.md` pronto para o Execute.
-- **Next step**: apresentar o plano de Execute (batches ~7: P1+P2, P3+P4, P5, P6+P7, P8 + Verifier independente ao final) e obter o go-ahead; então iniciar T1.
-- **Blockers**: aprovação do usuário para o Execute; validação **ao vivo** do `stop.followup_message` (máquina do usuário — lacuna C7).
-- **Uncommitted files**: nenhum da feature (artefatos commitados). Config local da máquina: capturador da POC ainda instalado em `~/.cursor/hooks.json` (17 eventos com 2 comandos) — limpar com `npm run cursor:poc:uninstall` quando quiser.
+- **Phase / Task**: **Execute em andamento — lote B1 (P1+P2, T1–T8) concluído** (`37471f1`..`75f100c`). Usuário aprovou o Execute com 4 lotes de sub-agentes (B1 P1+P2=8, B2 P3+P4=5, B3 P5=9, B4 P6+P7+P8=12). Gate do lote verificado pelo orquestrador: `npm run typecheck && npm test && npm run build` → 108 arquivos / **1409 passed / 2 skipped**, build OK.
+- **Completed** (recente): B1 — `TranscriptHub` (leitura única + fan-out, `server/sources/transcript-hub.ts`, T1/T2), `TerminalStreams` e `CursorSource` assinam o hub (T3/T4), diff do `afterFileEdit` no hook→`Activity`→terminal (T5–T8). Antes: bugfixes `CSH-06`/`CSH-22` e artefatos da `sala-de-controle`.
+- **In-progress** (file:line): nada; próximo é despachar o **lote B2** (P3 triagem T9–T10; P4 mosaico T11–T13).
+- **Next step**: despachar B2 (fases P3+P4) ao worker; ao fim dos 4 lotes, rodar o **Verifier independente** (autor ≠ verificador) e `validate_state.py`.
+- **Blockers**: validação **ao vivo** do `stop.followup_message` (máquina do usuário — lacuna C7).
+- **Uncommitted files**: nenhum. Config local da máquina: capturador da POC ainda instalado em `~/.cursor/hooks.json` (17 eventos com 2 comandos) — limpar com `npm run cursor:poc:uninstall` quando quiser.
 - **Branch**: `cursor-poc-v2`. Remotes: `origin` = fork `weescoelho/habblaud`; `upstream` = `marmottajr/habblaud`.
