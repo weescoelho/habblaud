@@ -20,12 +20,12 @@
 
 ## Handoff
 
-- **Feature**: `cursor-transcript` (`.specs/features/cursor-transcript/`) — **Fase 3 do Cursor**: terminal da conversa a partir do `transcript_path`, tokens acumulados nos eventos de hook (`AgentStats` → Office) e atividades ricas das ferramentas próprias do Cursor.
-- **Phase / Task**: **Execute** concluído (T1–T6; `validate_spec.py` 0/0 e `validate_tasks.py` 0 erros). Validação independente (Verifier) **não** executada nesta rodada (autor = implementador; fora do escopo pedido).
-- **Completed** (desta feature): T1 `server/sources/cursor/terminal.ts` (`createCursorTerminalParser`) + teste; T2 `transcript_path`/`terminalParser` na `CursorSource`; T3 tokens no `CursorEvent` (`rollout.ts`); T4 tokens acumulados no Office; T5 traduções ricas de `GetDynamicTools`/`AskQuestion`/`UpdateCurrentStep` e delegate `Task`; T6 roteiro + este Handoff. Gate `typecheck` + `vitest` (1335 passed / 2 skipped) + `build`.
-- **Resultados documentados**: o transcript observado **não** traz `tool_result` (nenhuma entrada `result`) nem checklist (`UpdateCurrentStep` é passo, não lista → nenhum `TaskItem` derivado).
+- **Feature**: `cursor-subagents-history` (`.specs/features/cursor-subagents-history/`) — **Fase 4 do Cursor**: subagentes da IDE por hook, detecção de `git`/`gh` pelo transcript e histórico do terminal.
+- **Phase / Task**: **Execute** concluído (T1–T8; `validate_spec.py` 0/0 e `validate_tasks.py` 0 erros). Validação independente (Verifier) **não** executada nesta rodada (autor = implementador; fora do escopo pedido).
+- **Completed** (desta feature): T1 campos de subagente em `server/sources/cursor/rollout.ts` (`subagentId`/`subagentType`/`subagentTask`/`parentConversationId`, bordas `working`/`idle`); T2 subagentes na `CursorSource` (`addSub`/`completeSub`, chave `<conta>:s:<id>`, `parentId`, órfão/sem-id no-op, `poll` expira); T3 `cursorToolUses` exportado de `server/sources/cursor/transcript.ts`; T4 `server/sources/cursor/github.ts` (`cursorGitHubCall`/`cursorGitHubEvent`, fallback só-comando); T5 pump do transcript (`FileTail`/`seekEnd`) na `CursorSource`; T6 `server/sources/cursor/history.ts` (`CursorHistory implements HistoryProvider`); T7 registro no `HistorySet` em `server/index.ts` (só com `config.cursor`); T8 roteiro + este Handoff. Gate `typecheck` + `vitest` (107 files, 1373 passed / 2 skipped) + `build`.
+- **Resultados documentados**: (a) o transcript do Cursor **não** grava `tool_result` (Fase 3), então a detecção de `git push`/`gh pr create`/`gh pr merge` é **só-comando** e **não confirma o sucesso** (possível falso positivo — limitação v1); CI/release não são emitidos (sem desfecho). (b) `firstAt`/`lastAt` do histórico caem no **mtime** (o transcript não tem horário) e o título sai do 1º prompt; o slug do projeto não é reversível, então `project` só aparece se a linha trouxer `cwd`.
 - **In-progress** (file:line): nada.
-- **Next step**: rodar o Verifier independente (autor ≠ verificador) para escrever `validation.md`; depois, na máquina com Cursor, validar **ao vivo** (transcript real, terminal e tokens).
-- **Blockers**: validação **ao vivo** exige a máquina do usuário; sem `transcript_path` o terminal degrada para o parser do Claude (comportamento atual).
-- **Uncommitted files**: nenhum (este Handoff entra no commit de docs da Fase 3).
+- **Next step**: rodar o Verifier independente (autor ≠ verificador) para escrever `validation.md`; depois, na máquina com Cursor, validar **ao vivo** (subagentes da IDE, `git push`/PR pelo transcript e o histórico).
+- **Blockers**: validação **ao vivo** exige a máquina do usuário; sem transcript/histórico o Cursor degrada para o comportamento por hook (atual).
+- **Uncommitted files**: nenhum (este Handoff entra no commit de docs da Fase 4).
 - **Branch**: `cursor-poc` (enviado para `origin/cursor-poc`). Remotes: `origin` = fork `weescoelho/habblaud`; `upstream` = `marmottajr/habblaud`.

@@ -301,9 +301,9 @@ T8
 
 **Done when**:
 
-- [ ] §6.8 ganha a nota da Fase 4 apontando para `.specs/features/cursor-subagents-history/`
-- [ ] o Handoff de `.specs/STATE.md` resume a feature e registra a limitação (sem `tool_result` → sem confirmação de sucesso)
-- [ ] Gate check passes: `npm run typecheck && npm test && npm run build`
+- [x] §6.8 ganha a nota da Fase 4 apontando para `.specs/features/cursor-subagents-history/`
+- [x] o Handoff de `.specs/STATE.md` resume a feature e registra a limitação (sem `tool_result` → sem confirmação de sucesso)
+- [x] Gate check passes: `npm run typecheck && npm test && npm run build`
 
 **Tests**: none
 **Gate**: build
