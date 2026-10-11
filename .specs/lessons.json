@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "promote_threshold": 2,
+  "window_days": 45,
+  "quarantine_threshold": 2,
+  "next_id": 3,
+  "lessons": [
+    {
+      "id": "L-001",
+      "key": "surviving_mutant::assert the exact rendered activity text the design pins not only that a substring of the argument appears",
+      "text": "Assert the exact rendered Activity text the design pins, not only that a substring of the argument appears",
+      "signal": "surviving_mutant",
+      "scope": "cursor/rollout",
+      "status": "candidate",
+      "features": [
+        "cursor-transcript"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "M12 (rollout.ts UpdateCurrentStep; rollout.test.ts:173-178) (cursor/rollout)"
+      ],
+      "created": "2026-10-11T17:34:38Z",
+      "last_seen": "2026-10-11T17:34:38Z"
+    },
+    {
+      "id": "L-002",
+      "key": "surviving_mutant::assert a derived timestamp precedence order explicit value then last seen then fallback not only that it is numeric",
+      "text": "Assert a derived timestamp precedence order (explicit value, then last seen, then fallback), not only that it is numeric",
+      "signal": "surviving_mutant",
+      "scope": "cursor/terminal",
+      "status": "candidate",
+      "features": [
+        "cursor-transcript"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "M18 (terminal.ts:113; terminal.test.ts:23) (cursor/terminal)"
+      ],
+      "created": "2026-10-11T17:34:38Z",
+      "last_seen": "2026-10-11T17:34:38Z"
+    }
+  ]
+}

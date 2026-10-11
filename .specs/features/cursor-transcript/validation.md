@@ -132,3 +132,19 @@ enfraquecimento de asserção.
   confirmado). Sem `git stash` em momento algum.
 - Verdict ancorado em AC: os 14 ACs casam com o resultado da spec; as 2 sobreviventes do sensor são
   detalhes de *design/assumption* (G1/G2) → fix tasks de teste, sem bloqueio do MVP.
+
+---
+
+## Resoluções (fix tasks G1/G2) — 2026-10-11
+
+As duas lacunas de teste (mutantes **M12** e **M18**) foram fechadas no commit `4f3714c`
+(`test(cursor): matar mutantes sobreviventes do transcript (M12/M18)`):
+
+- **G1/M12**: `rollout.test.ts` e `source.test.ts` passam a exigir `text === 'Etapa: Rodando os testes'`
+  (e o `detail`), matando a remoção do prefixo `Etapa: `.
+- **G2/M18**: `terminal.test.ts` ganha um caso com `timestamp` (ISO) e `ts` (número) explícitos conferindo
+  o `at` derivado linha a linha (com o encadeamento do "último conhecido").
+
+Re-checagem do sensor (replicação das duas mutações em worktree descartável `/tmp/opencode/p3-verify`):
+as três suítes (`terminal`/`rollout`/`source`) **falham** com as mutações → **M12 e M18 mortos**.
+Árvore real limpa antes e depois (`git status --porcelain` = 0). Total do sensor: **18/18 mortos**.
