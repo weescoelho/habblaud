@@ -7,6 +7,10 @@
 // novo reabre a sessão. O `transcript_path` que os hooks trazem é guardado por conversa (só quando vem não
 // vazio; nunca limpo por um evento sem ele) e vira o terminal via transcriptPathOf/terminalParser.
 //
+// Transcript: o pump de eventos do GitHub (tool_use Shell com git/gh) lê pelo TranscriptHub — o mesmo leitor
+// compartilhado dos terminais, uma assinatura por agente (SC-05) — e reage ao vivo (SC-02); o poll força um
+// ciclo como fallback (SC-04).
+//
 // Subagentes: `subagentStart`/`subagentStop` formam um par por `subagent_id`, ligado ao agente pai. O sub tem
 // transcript próprio (`agent-transcripts/<pai>/subagents/<child>.jsonl`); o id da conversa dele
 // (`child_conversation_id`) só chega no Stop, então o terminal do sub resolve no Stop e sobrevive à entrega.
@@ -21,8 +25,9 @@ import type { AccountEntry, AccountsService } from '../../accounts/service';
 import { log } from '../../log';
 import type { Office } from '../../model/office';
 import type { AgentSource } from '../source';
-import { FileTail, type TailRead } from '../tail';
+import type { TailRead } from '../tail';
 import type { TerminalParser } from '../terminal';
+import { TranscriptHub, type HubSubscription } from '../transcript-hub';
 import { cursorGitHubCall, cursorGitHubEvent } from './github';
 import type { CursorLive } from './live';
 import { describeCursorTool, parseCursorEvent, statusBorder, type CursorEvent } from './rollout';
@@ -72,6 +77,8 @@ export interface CursorSourceOptions {
   dir?: string;
   now?: () => number;
   pollMs?: number;
+  /** Leitor compartilhado do transcript (uma leitura por agente serve N assinantes). Padrão: um novo hub. */
+  hub?: TranscriptHub;
 }
 
 /** Estado interno de um agente Cursor (um por conversation_id ou subagent_id). */
@@ -97,10 +104,10 @@ interface CursorTracker {
   subDone?: boolean;
   /** Arquivo do transcript da conversa (só gravado quando um evento traz caminho não vazio; nunca limpo). */
   transcriptPath?: string;
-  /** Pump incremental do transcript (eventos do GitHub), um por conversa. */
-  tail?: FileTail;
-  /** Caminho do `tail` (troca = arquivo novo, refaz o `seekEnd`). */
-  tailPath?: string;
+  /** Assinatura do hub no transcript da conversa (eventos do GitHub), uma por agente. */
+  sub?: HubSubscription;
+  /** Caminho que a `sub` acompanha (troca = arquivo novo, reassina). */
+  subPath?: string;
   /** Tokens acumulados dos eventos de hook (refletidos no Office). */
   stats: AgentStats;
 }
@@ -113,10 +120,15 @@ export class CursorSource implements AgentSource, CursorLive {
   private readonly trackers = new Map<string, CursorTracker>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly now: () => number;
+  private readonly hub: TranscriptHub;
+  /** Só fecha o hub no stop() se foi ele que o criou (a injeção é de quem compartilha: T4). */
+  private readonly ownsHub: boolean;
 
   constructor(private readonly opts: CursorSourceOptions) {
     this.now = opts.now ?? Date.now;
     this.dir = opts.dir ?? resolve(join(opts.home, '.cursor'));
+    this.hub = opts.hub ?? new TranscriptHub();
+    this.ownsHub = !opts.hub;
     this.register();
   }
 
@@ -144,6 +156,8 @@ export class CursorSource implements AgentSource, CursorLive {
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    for (const t of this.trackers.values()) this.unsub(t);
+    if (this.ownsHub) this.hub.close();
   }
 
   sources(): SourceInfo[] {
@@ -162,11 +176,11 @@ export class CursorSource implements AgentSource, CursorLive {
     return this.trackers.has(agentId) ? createCursorTerminalParser() : undefined;
   }
 
-  /** Relógio de presença: bombeia o transcript de cada agente e remove os trackers sem evento novo. */
+  /** Relógio de presença: força um ciclo do hub (o `fs.watch` já antecipa o comum) e remove os trackers sem evento novo. */
   poll(): void {
+    this.hub.tick();
     const now = this.now();
     for (const [key, t] of [...this.trackers]) {
-      this.pumpGitHub(t, now);
       if (now - t.lastHookAt <= STALE_PRESENCE_MS) continue;
       this.leave(t);
       this.trackers.delete(key);
@@ -174,31 +188,36 @@ export class CursorSource implements AgentSource, CursorLive {
   }
 
   /**
-   * Pump incremental do transcript da conversa: no primeiro attach (ou troca de arquivo) posiciona no fim
-   * (`seekEnd`, só o que for escrito depois vira evento) e, a cada `poll`, lê as linhas novas à procura de
-   * `tool_use` `Shell` com `git`/`gh`, emitindo `office.githubEvent`. Transcript ausente/ilegível degrada (sem
-   * lançar); truncado/rotacionado recomeça do fim sem reemitir o antigo. A presença/atividade por hook não muda.
+   * Uma assinatura do hub por agente no transcript atual (SC-05): o hub é o dono do único `FileTail`. Sem
+   * transcript (ou fora do escritório), a assinatura é solta. Trocar o arquivo (`/clear` no mesmo processo ou
+   * um caminho novo num evento) reassina.
    */
-  private pumpGitHub(t: CursorTracker, at: number): void {
+  private ensureSub(t: CursorTracker): void {
     const path = t.transcriptPath;
-    if (!path || !t.inOffice) return;
-    if (!t.tail || t.tailPath !== path) {
-      t.tail = new FileTail(path);
-      t.tailPath = path;
-      t.tail.seekEnd();
-    }
-    let r: TailRead;
-    try {
-      r = t.tail.read();
-    } catch {
-      return; // arquivo ilegível: degrada (a presença por hook segue)
-    }
-    if (r.missing) return;
-    if (r.reset) {
-      // truncado/rotacionado: recomeça do fim, sem reemitir o antigo.
-      t.tail.seekEnd();
+    if (!path || !t.inOffice) {
+      this.unsub(t);
       return;
     }
+    if (t.sub && t.subPath === path) return;
+    this.unsub(t);
+    t.sub = this.hub.subscribe(path, { onRead: (r) => this.onTranscript(t, r) });
+    t.subPath = path;
+  }
+
+  private unsub(t: CursorTracker): void {
+    t.sub?.unsubscribe();
+    t.sub = undefined;
+    t.subPath = undefined;
+  }
+
+  /**
+   * Leitura do hub para um agente: só as linhas novas viram evento do GitHub (`tool_use` `Shell` com `git`/`gh`);
+   * `reset` (truncado/rotacionado) e `missing` são ignorados — recomeça do fim, sem reemitir o antigo. A
+   * presença/atividade por hook não muda.
+   */
+  private onTranscript(t: CursorTracker, r: TailRead): void {
+    if (r.missing || r.reset) return;
+    const at = this.now();
     for (const line of r.lines) {
       for (const use of cursorToolUses(line)) {
         const call = cursorGitHubCall(use.name, use.input);
@@ -234,7 +253,11 @@ export class CursorSource implements AgentSource, CursorLive {
       this.leave(t);
       this.trackers.delete(key);
       // Os subagentes filhos saem junto (o closeMain já os encerra no Office).
-      for (const [k, s] of [...this.trackers]) if (s.parentId === key) this.trackers.delete(k);
+      for (const [k, s] of [...this.trackers]) {
+        if (s.parentId !== key) continue;
+        this.unsub(s);
+        this.trackers.delete(k);
+      }
       return true;
     }
 
@@ -265,6 +288,7 @@ export class CursorSource implements AgentSource, CursorLive {
       t.stats.tokensOut += event.tokens.output;
     }
     this.reconcile(t);
+    this.ensureSub(t);
     if (!t.inOffice) return true;
 
     // Reflete os tokens acumulados no Office (tarefas ficam vazias: o transcript não traz checklist).
@@ -335,6 +359,7 @@ export class CursorSource implements AgentSource, CursorLive {
       startedAt: t.startedAt,
     });
     t.inOffice = this.opts.office.has(key);
+    this.ensureSub(t);
     return true;
   }
 
@@ -399,6 +424,7 @@ export class CursorSource implements AgentSource, CursorLive {
 
   /** Sai do escritório: o principal encerra (`closeMain`, em cascata); o subagente entrega (`completeSub`). */
   private leave(t: CursorTracker): void {
+    this.unsub(t);
     if (!t.inOffice) return;
     if (t.kind === 'sub') {
       this.opts.office.completeSub(t.key);

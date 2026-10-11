@@ -200,11 +200,11 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] A fonte deixa de abrir `FileTail` próprio e assina o hub (SC-05)
-- [ ] Linha nova no transcript reflete em status/atividade ≤500 ms (SC-02)
-- [ ] Claude/Codex intactos (nenhuma fonte deles tocada)
-- [ ] Gate check passes: `npm test`
-- [ ] Test count: `server/sources/cursor/source.test.ts` verde (sem remoção de teste)
+- [x] A fonte deixa de abrir `FileTail` próprio e assina o hub (SC-05)
+- [x] Linha nova no transcript reflete em status/atividade ≤500 ms (SC-02)
+- [x] Claude/Codex intactos (nenhuma fonte deles tocada)
+- [x] Gate check passes: `npm test`
+- [x] Test count: `server/sources/cursor/source.test.ts` verde (sem remoção de teste)
 
 **Tests**: unit
 **Gate**: full

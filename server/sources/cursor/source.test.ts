@@ -10,6 +10,7 @@ import { setQuiet } from '../../log';
 import { NameStore } from '../../model/names';
 import { Office } from '../../model/office';
 import { tempDir } from '../../test/fixtures';
+import { TranscriptHub } from '../transcript-hub';
 import { CursorSource } from './source';
 
 setQuiet(true);
@@ -20,7 +21,7 @@ afterEach(() => {
   cleanups = [];
 });
 
-function setup() {
+function setup(opts: { hub?: TranscriptHub } = {}) {
   const home = tempDir('habblaud-cursor-');
   cleanups.push(home.cleanup);
   const dir = resolve(join(home.dir, '.cursor'));
@@ -38,7 +39,7 @@ function setup() {
     now,
   });
   late.office = office;
-  const source = new CursorSource({ accounts, office, home: home.dir, dir, now, pollMs: 1_000 });
+  const source = new CursorSource({ accounts, office, home: home.dir, dir, now, pollMs: 1_000, hub: opts.hub });
   cleanups.unshift(() => source.stop());
   const notices: string[] = [];
   return {
@@ -481,5 +482,20 @@ describe('fonte do Cursor: pump do transcript (GitHub)', () => {
     writeFileSync(file, `${shellLine('git push origin main')}\n`);
     ctx.poll();
     expect(ctx.agent()?.activity?.tool).not.toBe('GitHub'); // recomeçou do fim, sem festa falsa
+  });
+
+  it('assina o hub: a linha nova entregue pelo hub vira atividade do GitHub sem depender do poll (SC-02/SC-05)', () => {
+    const hub = new TranscriptHub({ auto: false });
+    cleanups.push(() => hub.close());
+    const ctx = setup({ hub });
+    expect(hub.size).toBe(0); // ninguém assinou ainda
+    const file = join(ctx.home.dir, 'live.jsonl');
+    writeFileSync(file, `${shellLine('git commit -m antigo')}\n`); // já existia no attach (seekEnd ignora)
+    ctx.hook(ev('sessionStart', { transcript_path: file }));
+    expect(hub.size).toBe(1); // a fonte assina o hub (deixa de abrir FileTail próprio)
+
+    appendFileSync(file, `${shellLine('git push origin main')}\n`);
+    hub.tick(); // o hub entrega; a fonte reage ao vivo, sem passar pelo poll()
+    expect(ctx.agent()?.activity).toMatchObject({ tool: 'GitHub', kind: 'git' });
   });
 });
