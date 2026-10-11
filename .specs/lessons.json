@@ -3,7 +3,7 @@
   "promote_threshold": 2,
   "window_days": 45,
   "quarantine_threshold": 2,
-  "next_id": 3,
+  "next_id": 5,
   "lessons": [
     {
       "id": "L-001",
@@ -40,6 +40,42 @@
       ],
       "created": "2026-10-11T17:34:38Z",
       "last_seen": "2026-10-11T17:34:38Z"
+    },
+    {
+      "id": "L-003",
+      "key": "spec_precision_gap::test the config flag guard that gates a provider registration not only the dispatch to that provider",
+      "text": "Test the config-flag guard that gates a provider registration, not only the dispatch to that provider",
+      "signal": "spec_precision_gap",
+      "scope": "server-wiring",
+      "status": "candidate",
+      "features": [
+        "cursor-subagents-history"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "server/index.ts:128-129 (CSH-18/CSH-21; history.test.ts:180-193) (server-wiring)"
+      ],
+      "created": "2026-10-11T18:39:54Z",
+      "last_seen": "2026-10-11T18:39:54Z"
+    },
+    {
+      "id": "L-004",
+      "key": "spec_precision_gap::assert the specific event kind emitted by an integration path not only the tool activity category that carries it",
+      "text": "Assert the specific event kind emitted by an integration path, not only the tool/activity category that carries it",
+      "signal": "spec_precision_gap",
+      "scope": "cursor/source",
+      "status": "candidate",
+      "features": [
+        "cursor-subagents-history"
+      ],
+      "recurrence": 1,
+      "harmful": 0,
+      "evidence": [
+        "source.test.ts:370-372 (CSH-09; spec.md:107-108) (cursor/source)"
+      ],
+      "created": "2026-10-11T18:40:04Z",
+      "last_seen": "2026-10-11T18:40:04Z"
     }
   ]
 }

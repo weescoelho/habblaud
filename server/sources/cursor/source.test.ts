@@ -369,7 +369,8 @@ describe('fonte do Cursor: pump do transcript (GitHub)', () => {
 
     appendFileSync(file, `${shellLine('gh pr create --title x')}\n`);
     ctx.poll();
-    expect(ctx.agent()?.activity?.tool).toBe('GitHub');
+    // `gh pr create` vira o evento `pr_opened` (texto "Abriu … PR"), não um `push` genérico (CSH-09).
+    expect(ctx.agent()?.activity).toMatchObject({ tool: 'GitHub', kind: 'git', text: 'Abriu um PR' });
   });
 
   it('só emite git/gh: um comando comum no transcript não vira evento do GitHub', () => {

@@ -26,6 +26,18 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: M18 (terminal.ts:113; terminal.test.ts:23) (cursor/terminal)
 - last seen: 2026-10-11T17:34:38Z
 
+### L-003 - Test the config-flag guard that gates a provider registration, not only the dispatch to that provider
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `server-wiring` · harmful: 0
+- features: cursor-subagents-history
+- evidence: server/index.ts:128-129 (CSH-18/CSH-21; history.test.ts:180-193) (server-wiring)
+- last seen: 2026-10-11T18:39:54Z
+
+### L-004 - Assert the specific event kind emitted by an integration path, not only the tool/activity category that carries it
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `cursor/source` · harmful: 0
+- features: cursor-subagents-history
+- evidence: source.test.ts:370-372 (CSH-09; spec.md:107-108) (cursor/source)
+- last seen: 2026-10-11T18:40:04Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.

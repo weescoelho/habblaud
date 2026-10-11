@@ -170,3 +170,17 @@ enfraquecimento de asserção.
   falhas são as asserções certas, não erro de carga.
 - Verdict ancorado em AC: os 21 ACs casam com o resultado da spec; as 2 lacunas (G1/G2) são de *teste*
   (fiação/kind), sem bloqueio do MVP.
+
+---
+
+## Resoluções (fix tasks G1/G2) — 2026-10-11
+
+- **G2 (CSH-09) — corrigida** no commit de fix: `server/sources/cursor/source.test.ts` passa a exigir
+  o evento do GitHub específico (`kind: 'git'`, `text: 'Abriu um PR'`) para `gh pr create`, em vez de só
+  `activity.tool === 'GitHub'`. Um `push` genérico (texto "Enviou commits…") não passaria.
+- **G1 (CSH-18/CSH-21) — aceita conscientemente (não é bug)**: o guard `if (history && cursor)`
+  (`server/index.ts`) fica no *entrypoint*, que este repositório não testa unitariamente (nenhum teste
+  importa `server/index.ts`); a montagem do `HistorySet` é coberta por build gate e o padrão é idêntico ao
+  do Codex. Extrair a montagem só para testar um guard trivial seria refactor sem retorno — fica registrado
+  como pendência de cobertura de fiação, não como lacuna de comportamento. Lição `L-003` mantida como
+  candidata para uma futura costura de composição testável.
