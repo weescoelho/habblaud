@@ -92,6 +92,17 @@ describe('cursor-rules.ts (regras locais do Cursor)', () => {
     expect(leftovers).toEqual([]);
   });
 
+  it('writeCursorRule é atômica de verdade: falha no passo intermediário deixa o arquivo ANTIGO intacto', () => {
+    writeRaw(JSON.stringify({ rules: [rule({ pattern: '^antiga' })] }));
+    // Sabota o temp+rename: um diretório ocupando o caminho do arquivo temporário faz a gravação falhar.
+    const tmp = `${cursorConfigPath(home)}.tmp-${process.pid}`;
+    mkdirSync(tmp, { recursive: true });
+    const r = writeCursorRule(home, rule({ pattern: '^nova' }));
+    expect(r.ok).toBe(false);
+    // Escrever no lugar apagaria o arquivo antes de falhar; o temp+rename preserva o conteúdo antigo íntegro.
+    expect(readCursorConfig(home).rules).toEqual([rule({ pattern: '^antiga' })]);
+  });
+
   it('writeCursorRule: destino impossível devolve erro em vez de lançar', () => {
     // `home` aponta para um arquivo (não diretório): mkdir falha.
     writeRaw('');

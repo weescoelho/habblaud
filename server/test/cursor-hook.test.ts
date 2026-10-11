@@ -12,6 +12,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { setQuiet } from '../log';
+import { readCursorConfig, writeCursorRule } from '../permissions/cursor-rules';
 import { tempDir } from './fixtures';
 import { CURSOR_MAIN, CURSOR_CONV, servePermissions, type PermissionServer } from './permission-server';
 
@@ -210,6 +211,33 @@ describe('hook.mjs do Cursor (processo)', () => {
     expect(r.code).toBe(0);
     expect(JSON.parse(r.stdout)).toEqual({ permission: 'deny', user_message: 'Recusado pela regra local do Habblaud: comando destrutivo' });
     expect(live.calls).toHaveLength(0);
+  });
+
+  it('fluxo inteiro do "sempre permitir": decidir pela sugestão grava a regra e o próximo pedido igual é aprovado pelo hook, sem rede', async () => {
+    srv = await servePermissions({
+      cursor: true,
+      cursorLive: live,
+      registry: { persistCursorRule: (rule) => void writeCursorRule(home, rule) }, // a fiação de server/index.ts
+    });
+    writeConfig({ port: srv.port });
+    // 1) Sem regra ainda, o hook registra — e manda o suggest_rule, que o servidor vira sugestão própria.
+    const run = runHook(JSON.stringify(beforeShell()));
+    const id = await pendingId(srv);
+    expect(srv.registry!.detail(id)!.suggestions).toEqual([{ index: 0, rules: ['Shell(npm test)'], destination: 'habblaud' }]);
+    // 2) "Permitir sempre": o servidor decide pela sugestão e persiste a regra local.
+    expect(srv.registry!.decide(id, { behavior: 'allow', suggestion: 0 })).toBe('ok');
+    expect((await run).stdout).toBe('{"permission":"allow"}\n');
+    expect(readCursorConfig(home).rules).toEqual([{ tool: 'Shell', pattern: '^npm test(\\s|$)', effect: 'allow', note: 'npm test' }]);
+    // 3) Próximo pedido idêntico: o hook casa a regra e aprova sozinho — sem rede e sem registrar no escritório.
+    const r2 = await runHook(JSON.stringify(beforeShell()));
+    expect(r2.code).toBe(0);
+    expect(r2.stdout).toBe('{"permission":"allow"}\n');
+    expect(r2.ms).toBeLessThan(2_000);
+    expect(live.calls).toHaveLength(1); // só a primeira vez foi ao escritório
+    expect(srv.registry!.size).toBe(0);
+    const lines = readFileSync(join(home, '.habblaud', 'cursor-decisions.jsonl'), 'utf8').trim().split('\n');
+    expect(lines).toHaveLength(1); // a decisão local da segunda vez
+    expect(JSON.parse(lines[0])).toMatchObject({ tool: 'Shell', effect: 'allow', pattern: '^npm test(\\s|$)' });
   });
 
   it('regra inválida na política (regex que não compila) é ignorada: volta ao fluxo anterior (registrar e esperar)', async () => {
