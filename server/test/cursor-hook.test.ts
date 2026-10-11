@@ -1,10 +1,12 @@
 // Hook de decisão e observação do Cursor (mod/habblaud-cursor/hook.mjs) rodado como processo de verdade contra o
-// servidor de teste (rotas de verdade e uma fonte do Cursor falsa): eventos de observação (sem saída), a
-// configuração em ~/.habblaud/cursor-hook.json, e os eventos de decisão (beforeShellExecution, beforeMCPExecution,
-// beforeReadFile e preToolUse) — aprovar, recusar, tempo esgotado, Habblaud fora do ar e stdin inválido. O schema dos
-// hooks do Cursor ainda não está confirmado (lacuna C1): o stdin é sintético, e o hook lê com aliases defensivos.
+// servidor de teste (rotas de verdade e uma fonte do Cursor falsa): eventos de observação (sem saída) — por padrão
+// beforeReadFile/preToolUse também são observação —, a configuração em ~/.habblaud/cursor-hook.json (porta, espera,
+// decisionEvents e rules), a decisão local por regra (sem rede), os eventos de decisão (beforeShellExecution e
+// beforeMCPExecution) — aprovar, recusar, tempo esgotado, Habblaud fora do ar e stdin inválido — e o contrato do
+// suggest_rule. O schema dos hooks do Cursor ainda não está confirmado (lacuna C1): o stdin é sintético, e o hook lê
+// com aliases defensivos.
 import { spawn } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -165,22 +167,58 @@ describe('hook.mjs do Cursor (processo)', () => {
     expect(r).toMatchObject({ code: 0, stdout: '' });
   });
 
-  it('beforeReadFile e preToolUse registram pela ferramenta derivada do evento', async () => {
+  it('beforeReadFile e preToolUse são observação por padrão: vão ao escritório sem registrar pedido nem bloquear', async () => {
     srv = await servePermissions({ cursor: true, cursorLive: live });
     writeConfig({ port: srv.port });
-    let run = runHook(JSON.stringify(beforeRead()));
-    let id = await pendingId(srv);
+    let r = await runHook(JSON.stringify(beforeRead()));
+    expect(r).toMatchObject({ code: 0, stdout: '' });
+    expect(r.ms).toBeLessThan(3_000);
+    r = await runHook(JSON.stringify(preTool()));
+    expect(r).toMatchObject({ code: 0, stdout: '' });
+    expect(live.calls.map((c) => c.input.hook_event_name)).toEqual(['beforeReadFile', 'preToolUse']);
+    expect(srv.registry!.size).toBe(0);
+  });
+
+  it('decisionEvents reativa beforeReadFile: o pedido volta a ser registrado (degradação graciosa)', async () => {
+    srv = await servePermissions({ cursor: true, cursorLive: live });
+    writeConfig({ port: srv.port, decisionEvents: ['beforeReadFile'] });
+    const run = runHook(JSON.stringify(beforeRead()));
+    const id = await pendingId(srv);
     expect(srv.registry!.detail(id)).toMatchObject({ provider: 'cursor', tool: 'Read', title: 'Read(src/app.ts)' });
     srv.registry!.decide(id, { behavior: 'allow' });
     expect((await run).stdout).toBe('{"permission":"allow"}\n');
+  });
 
-    run = runHook(JSON.stringify(preTool()));
-    id = await pendingId(srv);
-    expect(srv.registry!.detail(id)).toMatchObject({ provider: 'cursor', tool: 'Read' });
-    srv.registry!.decide(id, { behavior: 'deny' });
-    const r = await run;
+  it('regra allow da política local: decide na hora, sem nenhuma requisição, e registra a decisão', async () => {
+    srv = await servePermissions({ cursor: true, cursorLive: live });
+    writeConfig({ port: srv.port, rules: [{ tool: 'Shell', pattern: '^npm test(\\s|$)', effect: 'allow', note: 'npm test' }] });
+    const r = await runHook(JSON.stringify(beforeShell()));
     expect(r.code).toBe(0);
-    expect(JSON.parse(r.stdout)).toEqual({ permission: 'deny', user_message: 'Recusado pelo usuário no Habblaud.' });
+    expect(r.stdout).toBe('{"permission":"allow"}\n');
+    expect(r.ms).toBeLessThan(2_000);
+    expect(live.calls).toHaveLength(0);
+    expect(srv.registry!.size).toBe(0);
+    const lines = readFileSync(join(home, '.habblaud', 'cursor-decisions.jsonl'), 'utf8').trim().split('\n');
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0])).toMatchObject({ event: 'beforeShellExecution', tool: 'Shell', effect: 'allow', pattern: '^npm test(\\s|$)' });
+  });
+
+  it('regra deny da política local: recusa com o motivo, sem contatar o escritório', async () => {
+    srv = await servePermissions({ cursor: true, cursorLive: live });
+    writeConfig({ port: srv.port, rules: [{ tool: 'Shell', pattern: '^rm -rf', effect: 'deny', note: 'comando destrutivo' }] });
+    const r = await runHook(JSON.stringify(beforeShell({ command: 'rm -rf /' })));
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual({ permission: 'deny', user_message: 'Recusado pela regra local do Habblaud: comando destrutivo' });
+    expect(live.calls).toHaveLength(0);
+  });
+
+  it('regra inválida na política (regex que não compila) é ignorada: volta ao fluxo anterior (registrar e esperar)', async () => {
+    srv = await servePermissions({ cursor: true, cursorLive: live });
+    writeConfig({ port: srv.port, rules: [{ tool: 'Shell', pattern: '(', effect: 'allow' }] });
+    const run = runHook(JSON.stringify(beforeShell()));
+    const id = await pendingId(srv);
+    srv.registry!.decide(id, { behavior: 'allow' });
+    expect((await run).stdout).toBe('{"permission":"allow"}\n');
   });
 
   it('HABBLAUD_PORT vale como reserva quando o arquivo não tem a porta', async () => {
@@ -249,17 +287,24 @@ describe('hook.mjs do Cursor (funções)', () => {
     expect(hook.readConfig({ HOME: home })).toEqual({ port: 4747, waitMs: 25_000 });
   });
 
-  it('permissionBody: provider cursor, sessão pela conversa e a ferramenta derivada do evento', () => {
+  it('permissionBody: provider cursor, sessão pela conversa, a ferramenta derivada e o suggest_rule do "sempre permitir"', () => {
     const body = hook.permissionBody(beforeShell({ command: 'y'.repeat(20_000) }), 25_000);
-    expect(Object.keys(body).sort()).toEqual(['cwd', 'provider', 'session_id', 'timeout_ms', 'tool_input', 'tool_name']);
+    expect(Object.keys(body).sort()).toEqual(['cwd', 'provider', 'session_id', 'suggest_rule', 'timeout_ms', 'tool_input', 'tool_name']);
     expect(body).toMatchObject({ provider: 'cursor', session_id: CURSOR_CONV, tool_name: 'Shell', timeout_ms: 25_000, cwd: '/p/loja' });
     expect((body.tool_input as { command: string }).command.length).toBe(8_000);
+    expect(body.suggest_rule).toEqual({ tool: 'Shell', pattern: `^${'y'.repeat(8_000)}(\\s|$)`, effect: 'allow', note: 'y'.repeat(8_000) });
 
     const mcp = hook.permissionBody(beforeMcp(), 25_000);
     expect(mcp).toMatchObject({ provider: 'cursor', session_id: CURSOR_CONV, tool_name: 'MCP:github__create_issue', tool_input: { title: 'Bug' } });
+    expect(mcp.suggest_rule).toEqual({ tool: 'MCP:github__create_issue', pattern: '^MCP:github__create_issue$', effect: 'allow', note: 'MCP:github__create_issue' });
 
     const read = hook.permissionBody(beforeRead(), 25_000);
     expect(read).toMatchObject({ tool_name: 'Read', tool_input: { file_path: '/p/loja/src/app.ts' } });
+    expect(read.suggest_rule).toEqual({ tool: 'Read', pattern: '^/p/loja/src/app\\.ts', effect: 'allow', note: '/p/loja/src/app.ts' });
+
+    // Shell sem comando: não há sujeito para derivar a regra (sem botão "sempre permitir").
+    const noSubject = hook.permissionBody({ hook_event_name: 'beforeShellExecution', conversation_id: CURSOR_CONV }, 25_000);
+    expect(noSubject.suggest_rule).toBeUndefined();
   });
 
   it('decisionOutput: só allow e deny (+user_message); nunca outra coisa', () => {

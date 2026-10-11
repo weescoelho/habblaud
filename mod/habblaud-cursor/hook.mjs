@@ -1,9 +1,15 @@
 #!/usr/bin/env node
 // Hook de decisão e observação do Cursor (P3 do harness): observa os eventos dos hooks da IDE no escritório
-// (POST /api/cursor/events) e, nos eventos de decisão (beforeShellExecution, beforeMCPExecution, beforeReadFile e
-// preToolUse), registra o pedido em POST /api/permissions (provider "cursor") e espera a decisão em
-// GET /api/permissions/:id/wait. Imprime a decisão no formato NATIVO do Cursor: {"permission":"allow"|"deny"} (+
-// "user_message" no deny). `npm run cursor:install` acrescenta este hook em ~/.cursor/hooks.json (ou --project).
+// (POST /api/cursor/events) e, nos eventos de DECISÃO (por padrão beforeShellExecution e beforeMCPExecution; a
+// configuração local pode reativar outros), registra o pedido em POST /api/permissions (provider "cursor") e espera
+// a decisão em GET /api/permissions/:id/wait. Imprime a decisão no formato NATIVO do Cursor: {"permission":"allow"|
+// "deny"} (+ "user_message" no deny). `npm run cursor:install` acrescenta este hook em ~/.cursor/hooks.json (ou
+// --project).
+//
+// Antes de qualquer contato, a POLÍTICA LOCAL (mod/habblaud-cursor/policy.mjs, do mesmo ~/.habblaud/cursor-hook.json)
+// é avaliada: um evento de decisão que casa uma regra `allow`/`deny` é decidido na hora, sem rede, e a decisão vai
+// para ~/.habblaud/cursor-decisions.jsonl (best-effort). Sem regra, o pedido vai ao escritório com `suggest_rule`
+// (a regra "sempre permitir" que o servidor grava quando você escolhe essa opção).
 //
 // O schema dos hooks do Cursor ainda não está confirmado (lacuna C1): o hook lê ALIASES DEFENSIVOS
 // (hook_event_name/hookEventName; conversation_id/conversationId/session_id/sessionId; tool_name/toolName;
@@ -12,19 +18,21 @@
 // preToolUse → o `tool_name` que a IDE mandar. Títulos e resumos saem da tradução das ferramentas do Cursor no
 // servidor (sources/cursor/rollout.ts: "Shell"→Bash, "MCP:<x>"→mcp__x).
 //
-// Config: ~/.habblaud/cursor-hook.json ({port, decisionTimeoutS}), criado à mão se quiser destoar do padrão —
-// o instalador (npm run cursor:install) não escreve este arquivo; HABBLAUD_PORT vale como reserva (o ambiente do hook
-// é o do processo que subiu a IDE, então variáveis do seu shell nem sempre chegam aqui). Padrões: porta 4747,
-// espera 25 s (entre 5 e 120).
+// Config: ~/.habblaud/cursor-hook.json ({port, decisionTimeoutS, decisionEvents, rules}), criado à mão se quiser
+// destoar do padrão — o instalador (npm run cursor:install) não escreve este arquivo, mas o servidor grava `rules`
+// nele quando você escolhe "sempre permitir". HABBLAUD_PORT vale como reserva (o ambiente do hook é o do processo que
+// subiu a IDE, então variáveis do seu shell nem sempre chegam aqui). Padrões: porta 4747, espera 25 s (entre 5 e 120),
+// eventos de decisão beforeShellExecution/beforeMCPExecution.
 //
 // Regras: node puro (22+), só `node:*`, sem dependências; nunca trava nem quebra a sessão: todo erro = sair com 0 e
 // sem saída; nos eventos de observação nada vai para o stdout (no beforeSubmitPrompt ele viraria contexto do modelo).
 // Tempo esgotado, Habblaud fora do ar ou da porta uma resposta sem id: sai sem imprimir nada e a IDE segue o fluxo
 // normal. Só fala com 127.0.0.1. HABBLAUD_HOOK_DEBUG=1 escreve o que acontece no stderr.
-import { readFileSync, realpathSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { allowOutput, decisionEventsOf, denyOutput, deriveRule, matchRule, rulesOf } from './policy.mjs';
 
 export const DEFAULT_PORT = 4747;
 /** Espera padrão por uma decisão no escritório (segundos). */
@@ -33,6 +41,8 @@ export const MIN_WAIT_S = 5;
 export const MAX_WAIT_S = 120;
 /** Arquivo de configuração opcional, em ~/.habblaud (criado à mão; o instalador não grava). */
 export const CONFIG_FILE = 'cursor-hook.json';
+/** Registro local (best-effort) das decisões tomadas por regra local, em ~/.habblaud. */
+export const DECISIONS_FILE = 'cursor-decisions.jsonl';
 /** Eventos mandados ao Habblaud (POST /api/cursor/events). */
 export const OBSERVED = new Set([
   'sessionStart',
@@ -51,8 +61,6 @@ export const OBSERVED = new Set([
   'afterAgentThought',
   'stop',
 ]);
-/** Eventos que viram pedido de permissão (os "antes de" e o preToolUse, quando trazem uma ferramenta). */
-export const DECISION = new Set(['beforeShellExecution', 'beforeMCPExecution', 'beforeReadFile', 'preToolUse']);
 /** Prazo do envio de um evento: o Habblaud responde na hora (e o hook não pode atrasar a IDE). */
 const EVENT_TIMEOUT_MS = 1_500;
 /** Registrar o pedido: se o Habblaud não responder nisso, ele está fora do ar (ou travado). */
@@ -144,6 +152,32 @@ export function readConfig(env = process.env) {
   };
 }
 
+/**
+ * Política local do mesmo arquivo de configuração: os eventos que pedem decisão (`decisionEvents` ou o padrão
+ * Shell/MCP) e as regras `allow`/`deny`. Arquivo ausente ou ilegível = padrões (nenhuma regra), sem lançar.
+ */
+export function readPolicy(env = process.env) {
+  const home = env.HOME || homedir();
+  let file;
+  try {
+    file = JSON.parse(readFileSync(join(home, '.habblaud', CONFIG_FILE), 'utf8'));
+  } catch {
+    file = undefined;
+  }
+  return { decisionEvents: decisionEventsOf(file), rules: rulesOf(file) };
+}
+
+/** Registra (best-effort) uma decisão tomada por regra local; nunca deixa o registro atrapalhar a IDE. */
+export function logLocalDecision(env, entry) {
+  try {
+    const dir = join(env.HOME || homedir(), '.habblaud');
+    mkdirSync(dir, { recursive: true });
+    appendFileSync(join(dir, DECISIONS_FILE), `${JSON.stringify(entry)}\n`);
+  } catch {
+    // best-effort: a decisão já foi tomada; o registro é só observabilidade.
+  }
+}
+
 /** Corta textos longos (saída de comando, patch enorme...). */
 export function trimInput(v, max = MAX_STRING, depth = 0) {
   if (typeof v === 'string') return v.length > max ? v.slice(0, max) : v;
@@ -186,6 +220,10 @@ export function permissionBody(input, timeoutMs) {
     }
   }
   body.tool_input = fitted(toolInputOf(input), (toolInput) => JSON.stringify({ ...body, tool_input: toolInput }).length);
+  // Regra "sempre permitir" derivada do pedido: o servidor a grava quando você escolhe essa opção (o Cursor não tem
+  // `updatedPermissions`). Sem sujeito (ex.: Shell sem comando), não há o que sugerir.
+  const suggest = deriveRule(body.tool_name, body.tool_input);
+  if (suggest) body.suggest_rule = suggest;
   return body;
 }
 
@@ -259,11 +297,24 @@ export async function run(env = process.env, stdinText) {
     if (!event || !OBSERVED.has(event)) return undefined;
 
     const cfg = readConfig(env);
+    const policy = readPolicy(env);
     const base = `http://127.0.0.1:${cfg.port}`;
+
+    // Política local ANTES de qualquer contato: regra que casa decide na hora, sem rede (nem evento).
+    if (policy.decisionEvents.has(event)) {
+      const tool = toolNameOf(input);
+      const matched = matchRule(policy.rules, tool, toolInputOf(input));
+      if (matched) {
+        debug(`${event}: regra local ${matched.effect} (${matched.pattern})`);
+        logLocalDecision(env, { at: Date.now(), event, tool, effect: matched.effect, pattern: matched.pattern });
+        return matched.effect === 'deny' ? denyOutput(matched.note) : allowOutput();
+      }
+    }
+
     const sent = await call(base, 'POST', '/api/cursor/events', eventBody(input), EVENT_TIMEOUT_MS);
     debug(`${event}: ${sent ? `${sent.status} ${JSON.stringify(sent.json ?? null)}` : 'Habblaud fora do ar'}`);
     // Só os eventos de decisão (com ferramenta e conversa) viram pedido no escritório.
-    if (!DECISION.has(event)) return undefined;
+    if (!policy.decisionEvents.has(event)) return undefined;
     if (!conversationIdOf(input) || !toolNameOf(input)) return undefined;
     // Sem resposta nem ao evento: o Habblaud está fora do ar (ou travado); a IDE segue o fluxo normal.
     if (!sent) return undefined;
