@@ -252,6 +252,36 @@ describe('cursor-install.ts (comando de verdade, HOME falso)', () => {
     expect(r.stdout).toContain('4747');
   });
 
+  it('status: informa eventos de decisão (padrão/configurados), nº de regras locais e nº de decisões locais', () => {
+    const clean = cli(['status'], { HOME: home });
+    expect(clean.status).toBe(0);
+    expect(clean.stdout).toContain('eventos de decisão: beforeShellExecution, beforeMCPExecution (padrão)');
+    expect(clean.stdout).toContain('regras locais: 0');
+    expect(clean.stdout).toContain('decisões locais: 0');
+
+    // Política própria (eventos + regras, uma inválida) e decisões locais registradas pelo hook.
+    mkdirSync(join(home, '.habblaud'), { recursive: true });
+    writeFileSync(
+      join(home, '.habblaud', 'cursor-hook.json'),
+      JSON.stringify({
+        port: 4900,
+        decisionEvents: ['beforeShellExecution', 'beforeReadFile'],
+        rules: [
+          { tool: 'Shell', pattern: '^npm test(\\s|$)', effect: 'allow', note: 'npm test' },
+          { tool: 'Shell', pattern: '^rm -rf', effect: 'deny', note: 'destrutivo' },
+          { tool: '', pattern: '^x', effect: 'allow' },
+        ],
+      }),
+    );
+    writeFileSync(join(home, '.habblaud', 'cursor-decisions.jsonl'), '{"a":1}\n{"b":2}\n');
+    const r = cli(['status'], { HOME: home });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('eventos de decisão: beforeShellExecution, beforeReadFile;');
+    expect(r.stdout).not.toContain('(padrão)');
+    expect(r.stdout).toContain('regras locais: 2');
+    expect(r.stdout).toContain('decisões locais: 2');
+  });
+
   it('hooks.json quebrado: erro com saída ≠ 0 e o arquivo fica intacto', () => {
     const dir = join(home, '.cursor');
     mkdirSync(dir, { recursive: true });

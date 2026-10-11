@@ -7,10 +7,12 @@
 //   (qualquer comando aceita --dry-run: mostra o que mudaria, sem gravar nada)
 //
 // O hook (mod/habblaud-cursor/hook.mjs) observa os eventos da IDE no escritório e, nos eventos de decisão
-// (beforeShellExecution, beforeMCPExecution, beforeReadFile, preToolUse), segura a sessão esperando a decisão do
-// escritório (padrão 25 s; sem decisão, a IDE segue normal). A porta e a espera ficam em
-// ~/.habblaud/cursor-hook.json ({port, decisionTimeoutS}), que o hook lê se existir (HABBLAUD_PORT vale como reserva;
-// padrões: 4747 e 25 s) — nada de opções no comando do hook.
+// (por padrão beforeShellExecution e beforeMCPExecution; a política local pode reativar outros com
+// "decisionEvents"), segura a sessão esperando a decisão do escritório (padrão 25 s; sem decisão, a IDE segue
+// normal). A porta e a espera ficam em ~/.habblaud/cursor-hook.json ({port, decisionTimeoutS}), que o hook lê se
+// existir (HABBLAUD_PORT vale como reserva; padrões: 4747 e 25 s) — nada de opções no comando do hook. As regras
+// locais ("sempre permitir") também moram nesse arquivo ("rules"); `npm run cursor:status` mostra os eventos, o nº
+// de regras e o nº de decisões locais.
 //
 // Destino: o formato PLANO do Cursor, {"version":1,"hooks":{<evento>:[entradas]}}, em ~/.cursor/hooks.json (ou
 // <projeto>/.cursor/hooks.json com --project). Cada entrada é {command, ...} (flat, sem grupos); o instalador só muda
@@ -25,6 +27,7 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { quotePath, readSettings, tildify, writeSettings, type Settings } from './statusline-install';
+import { countLocalDecisions, DEFAULT_DECISION_EVENTS, readCursorConfig } from '../server/permissions/cursor-rules';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 /** O hook real do Cursor (o mesmo que o harness P1 usa é o poc-hook, de observação; aqui é o de decisão/observação). */
@@ -61,9 +64,12 @@ Opções:
   --dry-run        mostra o que mudaria, sem gravar nada
   -h, --help       mostra esta ajuda
 
-O hook decide pelos eventos de decisão (beforeShellExecution/beforeMCPExecution/beforeReadFile/preToolUse)
-quando há página aberta no Habblaud; sem decisão (tempo esgotado ou Habblaud parado), a IDE segue normal.
+O hook decide pelos eventos de decisão (por padrão beforeShellExecution/beforeMCPExecution; o
+~/.habblaud/cursor-hook.json pode reativar outros com "decisionEvents") quando há página aberta;
+sem decisão (tempo esgotado ou Habblaud parado), a IDE segue normal.
 Porta e espera: ~/.habblaud/cursor-hook.json ({port, decisionTimeoutS}); padrões: 4747 e 25 s.
+As regras locais ("sempre permitir") também ficam nesse arquivo ("rules"); o comando cursor:status
+mostra os eventos, o nº de regras e o nº de decisões locais.
 Para desfazer: npm run cursor:uninstall`;
 
 // ---------------------------------------------------------------------------------------------
@@ -320,7 +326,11 @@ export function run(opts: RunOptions, ctx: RunContext): number {
       if (st.missing.length) ctx.out(`! ${label}: faltando em ${st.missing.join(', ')}; rode npm run cursor:install`);
       ctx.out(`• ${label}: instalado em ${st.ok.length + st.outdated.length} de ${EVENTS.length} eventos`);
     }
-    ctx.out(`Configuração do hook: ${tildify(join(ctx.home, '.habblaud', 'cursor-hook.json'), ctx.home)} ({port, decisionTimeoutS}); padrões: porta 4747, espera 25 s (HABBLAUD_PORT vale como reserva).`);
+    const cfg = readCursorConfig(ctx.home);
+    const events = cfg.decisionEvents ?? DEFAULT_DECISION_EVENTS;
+    ctx.out(
+      `Configuração do hook: ${tildify(join(ctx.home, '.habblaud', 'cursor-hook.json'), ctx.home)} → eventos de decisão: ${events.join(', ')}${cfg.decisionEvents ? '' : ' (padrão)'}; regras locais: ${cfg.rules.length}; decisões locais: ${countLocalDecisions(ctx.home)}; porta 4747 e espera 25 s por padrão.`,
+    );
     return 0;
   }
   const plan = opts.command === 'install' ? planInstall(read.settings, command, EVENTS) : planUninstall(read.settings);

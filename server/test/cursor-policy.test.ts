@@ -4,6 +4,7 @@
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_DECISION_EVENTS as SERVER_DEFAULT } from '../permissions/cursor-rules';
 
 const POLICY = resolve(__dirname, '../../mod/habblaud-cursor/policy.mjs');
 
@@ -31,6 +32,8 @@ const rule = (over: Partial<Rule> = {}): Rule => ({ tool: 'Shell', pattern: '^np
 describe('policy.mjs (política local do hook)', () => {
   it('DEFAULT_DECISION_EVENTS: só shell e MCP (os de maior risco)', () => {
     expect(policy.DEFAULT_DECISION_EVENTS).toEqual(['beforeShellExecution', 'beforeMCPExecution']);
+    // Contrato: o padrão do servidor (cursor-rules, usado pelo status) não pode divergir do hook (policy.mjs).
+    expect(SERVER_DEFAULT).toEqual(policy.DEFAULT_DECISION_EVENTS);
   });
 
   it('decisionEventsOf: sem política/inválido/vazio = padrão; com array válido = override (vazios descartados)', () => {

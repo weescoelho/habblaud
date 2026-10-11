@@ -26,6 +26,13 @@ export interface CursorConfig {
 /** Teto de regras guardadas (as mais antigas saem quando estoura). */
 export const CURSOR_RULE_MAX = 200;
 
+/**
+ * Eventos que pedem decisão quando a política não diz outra coisa. Espelha `DEFAULT_DECISION_EVENTS` de
+ * mod/habblaud-cursor/policy.mjs (o hook é JS puro e não importa daqui); um teste de contrato garante que não
+ * divirjam.
+ */
+export const DEFAULT_DECISION_EVENTS = ['beforeShellExecution', 'beforeMCPExecution'];
+
 type Rec = Record<string, unknown>;
 
 const isObject = (v: unknown): v is Rec => !!v && typeof v === 'object' && !Array.isArray(v);
