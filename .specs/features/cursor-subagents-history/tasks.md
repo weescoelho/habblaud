@@ -211,13 +211,13 @@ T8
 
 **Done when**:
 
-- [ ] a fonte lê o transcript de forma incremental: um `tool_use` `Shell{command:'git push origin main'}` escrito **depois** do attach gera, no `poll()`, uma atividade `tool:'GitHub'` no agente
-- [ ] conteúdo pré-existente no attach **não** gera evento (`seekEnd()`), mas um `poll()` sobre a linha nova gera
-- [ ] sem `transcript_path`, `poll()` não lança e a presença/atividade por hook segue igual
-- [ ] transcript ausente/opaco não lança; um transcript truncado (`reset`) recomeça do fim sem reemitir o antigo
-- [ ] `server/sources/cursor/source.test.ts` cobre os casos acima
-- [ ] Gate check passes: `npm test`
-- [ ] Test count: 24+ casos passam (sem deleções silenciosas)
+- [x] a fonte lê o transcript de forma incremental: um `tool_use` `Shell{command:'git push origin main'}` escrito **depois** do attach gera, no `poll()`, uma atividade `tool:'GitHub'` no agente
+- [x] conteúdo pré-existente no attach **não** gera evento (`seekEnd()`), mas um `poll()` sobre a linha nova gera
+- [x] sem `transcript_path`, `poll()` não lança e a presença/atividade por hook segue igual
+- [x] transcript ausente/opaco não lança; um transcript truncado (`reset`) recomeça do fim sem reemitir o antigo
+- [x] `server/sources/cursor/source.test.ts` cobre os casos acima
+- [x] Gate check passes: `npm test`
+- [x] Test count: 24+ casos passam (sem deleções silenciosas)
 
 **Tests**: unit
 **Gate**: full

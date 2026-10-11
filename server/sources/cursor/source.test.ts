@@ -1,6 +1,7 @@
 // Integração da fonte do Cursor: sem arquivos locais (lacuna C2), a presença vem só dos eventos de hook. O teste usa
 // o AccountsService e o Office de verdade e empurra eventos de hook sintéticos, cobrindo 1:1 os ACs de T5
 // (CPOC-01, CPOC-03, CPOC-04, CPOC-08, CPOC-10) e os edge cases da spec (sala padrão, fora de ordem, expiração).
+import { appendFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AgentInfo } from '../../../shared/types';
@@ -350,5 +351,66 @@ describe('fonte do Cursor: subagentes por hook', () => {
     expect(ctx.agent('cursor:s:sa-8')?.status).toBe('done');
     ctx.hook(sub({ subagent_id: 'sa-8', task: 'Tarefa A de novo' }));
     expect(ctx.agent('cursor:s:sa-8')?.status).toBe('working');
+  });
+});
+
+describe('fonte do Cursor: pump do transcript (GitHub)', () => {
+  // Linha sintética no formato real do transcript do Cursor (message.content + tool_use Shell).
+  const shellLine = (command: string) =>
+    JSON.stringify({ role: 'assistant', message: { content: [{ type: 'tool_use', name: 'Shell', input: { command } }] } });
+
+  it('seekEnd ignora o conteúdo antigo; a linha nova (git push) vira atividade do GitHub', () => {
+    const ctx = setup();
+    const file = join(ctx.home.dir, 'transcript.jsonl');
+    writeFileSync(file, `${shellLine('git push origin main')}\n`); // já existia no attach
+    ctx.hook(ev('sessionStart', { transcript_path: file }));
+    ctx.poll();
+    expect(ctx.agent()?.activity?.tool).not.toBe('GitHub'); // nada do conteúdo antigo (seekEnd)
+
+    appendFileSync(file, `${shellLine('gh pr create --title x')}\n`);
+    ctx.poll();
+    expect(ctx.agent()?.activity?.tool).toBe('GitHub');
+  });
+
+  it('só emite git/gh: um comando comum no transcript não vira evento do GitHub', () => {
+    const ctx = setup();
+    const file = join(ctx.home.dir, 't2.jsonl');
+    ctx.hook(ev('sessionStart', { transcript_path: file }));
+    writeFileSync(file, `${shellLine('npm test')}\n`);
+    ctx.poll();
+    expect(ctx.agent()?.activity?.tool).not.toBe('GitHub');
+  });
+
+  it('sem transcript_path: o poll não lança e a presença/atividade por hook segue intacta', () => {
+    const ctx = setup();
+    ctx.hook(ev('sessionStart'));
+    ctx.hook(ev('preToolUse', { tool_name: 'Shell', tool_input: { command: 'ls -la' } }));
+    expect(() => ctx.poll()).not.toThrow();
+    expect(ctx.agent()?.status).toBe('working');
+    expect(ctx.agent()?.activity?.tool).toBe('Bash');
+    expect(ctx.source.transcriptPathOf('cursor:c1')).toBeUndefined();
+  });
+
+  it('transcript ausente degrada sem lançar; quando o arquivo aparece, o pump passa a ler', () => {
+    const ctx = setup();
+    const file = join(ctx.home.dir, 'late.jsonl');
+    ctx.hook(ev('sessionStart', { transcript_path: file }));
+    expect(() => ctx.poll()).not.toThrow(); // ausente: degrada
+    expect(ctx.agent()?.activity?.tool).not.toBe('GitHub');
+    writeFileSync(file, `${shellLine('git push origin main')}\n`);
+    ctx.poll();
+    expect(ctx.agent()?.activity?.tool).toBe('GitHub');
+  });
+
+  it('transcript truncado/rotacionado recomeça do fim, sem reemitir o antigo', () => {
+    const ctx = setup();
+    const file = join(ctx.home.dir, 'rot.jsonl');
+    writeFileSync(file, `${shellLine('npm test')}\n${shellLine('ls')}\n`);
+    ctx.hook(ev('sessionStart', { transcript_path: file }));
+    ctx.poll(); // 1º attach: seekEnd (nada do antigo)
+    // Rotaciona: o arquivo encolhe e traz um git push no começo.
+    writeFileSync(file, `${shellLine('git push origin main')}\n`);
+    ctx.poll();
+    expect(ctx.agent()?.activity?.tool).not.toBe('GitHub'); // recomeçou do fim, sem festa falsa
   });
 });

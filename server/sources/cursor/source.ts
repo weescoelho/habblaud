@@ -9,16 +9,20 @@
 //
 // Status: aplicado por bordas (decide), a informação mais nova vence (statusAt): um evento atrasado não regride.
 import { join, resolve } from 'node:path';
+import { githubEventKey } from '../../../shared/github';
 import type { Activity, AgentStats, AgentStatus, SourceInfo } from '../../../shared/types';
 import { ACCOUNT_COLORS, type DetectedAccount } from '../../accounts/detect';
 import type { AccountEntry, AccountsService } from '../../accounts/service';
 import { log } from '../../log';
 import type { Office } from '../../model/office';
 import type { AgentSource } from '../source';
+import { FileTail, type TailRead } from '../tail';
 import type { TerminalParser } from '../terminal';
+import { cursorGitHubCall, cursorGitHubEvent } from './github';
 import type { CursorLive } from './live';
 import { describeCursorTool, parseCursorEvent, statusBorder, type CursorEvent } from './rollout';
 import { createCursorTerminalParser } from './terminal';
+import { cursorToolUses } from './transcript';
 
 /** Sem evento de hook por este tempo, a sessão é dada como encerrada (crash sem `sessionEnd`). */
 export const STALE_PRESENCE_MS = 5 * 60_000;
@@ -88,6 +92,10 @@ interface CursorTracker {
   subDone?: boolean;
   /** Arquivo do transcript da conversa (só gravado quando um evento traz caminho não vazio; nunca limpo). */
   transcriptPath?: string;
+  /** Pump incremental do transcript (eventos do GitHub), um por conversa. */
+  tail?: FileTail;
+  /** Caminho do `tail` (troca = arquivo novo, refaz o `seekEnd`). */
+  tailPath?: string;
   /** Tokens acumulados dos eventos de hook (refletidos no Office). */
   stats: AgentStats;
 }
@@ -149,13 +157,51 @@ export class CursorSource implements AgentSource, CursorLive {
     return this.trackers.has(agentId) ? createCursorTerminalParser() : undefined;
   }
 
-  /** Relógio de presença: remove os trackers sem evento novo por `STALE_PRESENCE_MS`. */
+  /** Relógio de presença: bombeia o transcript de cada agente e remove os trackers sem evento novo. */
   poll(): void {
     const now = this.now();
     for (const [key, t] of [...this.trackers]) {
+      this.pumpGitHub(t, now);
       if (now - t.lastHookAt <= STALE_PRESENCE_MS) continue;
       this.leave(t);
       this.trackers.delete(key);
+    }
+  }
+
+  /**
+   * Pump incremental do transcript da conversa: no primeiro attach (ou troca de arquivo) posiciona no fim
+   * (`seekEnd`, só o que for escrito depois vira evento) e, a cada `poll`, lê as linhas novas à procura de
+   * `tool_use` `Shell` com `git`/`gh`, emitindo `office.githubEvent`. Transcript ausente/ilegível degrada (sem
+   * lançar); truncado/rotacionado recomeça do fim sem reemitir o antigo. A presença/atividade por hook não muda.
+   */
+  private pumpGitHub(t: CursorTracker, at: number): void {
+    const path = t.transcriptPath;
+    if (!path || !t.inOffice) return;
+    if (!t.tail || t.tailPath !== path) {
+      t.tail = new FileTail(path);
+      t.tailPath = path;
+      t.tail.seekEnd();
+    }
+    let r: TailRead;
+    try {
+      r = t.tail.read();
+    } catch {
+      return; // arquivo ilegível: degrada (a presença por hook segue)
+    }
+    if (r.missing) return;
+    if (r.reset) {
+      // truncado/rotacionado: recomeça do fim, sem reemitir o antigo.
+      t.tail.seekEnd();
+      return;
+    }
+    for (const line of r.lines) {
+      for (const use of cursorToolUses(line)) {
+        const call = cursorGitHubCall(use.name, use.input);
+        if (!call) continue;
+        const ev = cursorGitHubEvent(call);
+        if (!ev) continue;
+        this.opts.office.githubEvent(t.key, ev, { key: githubEventKey(ev), at, live: true });
+      }
     }
   }
 
