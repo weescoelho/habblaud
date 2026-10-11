@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AccountInfo, Provider } from '../../../shared/types';
-import { cardState, codexUsageNote, showsUsageAge, sourceLabel, usageCardAccounts, usageMessage, usageSubtitle } from './usage';
+import { cardState, codexUsageNote, showsUsageAge, sourceLabel, usageCardAccounts, usageCardsView, usageMessage, usageSubtitle } from './usage';
 
 const MIN = 60_000;
 type Acc = Pick<AccountInfo, 'usage' | 'usageStatus' | 'provider' | 'email' | 'plan' | 'configDir'>;
@@ -81,5 +81,16 @@ describe('usageCardAccounts (F5-01/F5-02 — Cursor sem cartão de uso)', () => 
   it('contas sem provider (Claude Code) não são afetadas', () => {
     const a = account();
     expect(usageCardAccounts([a])).toEqual([a]);
+  });
+});
+
+describe('usageCardsView (F5-01/F5-02 — derivação do render)', () => {
+  it('cards sem o Cursor; empty quando não sobra conta (a seção fica is-empty)', () => {
+    const claude = account();
+    const codexAcc = account('codex');
+    const cursor = account('cursor');
+    expect(usageCardsView([claude, codexAcc, cursor])).toEqual({ cards: [claude, codexAcc], empty: false });
+    expect(usageCardsView([cursor])).toEqual({ cards: [], empty: true });
+    expect(usageCardsView([])).toEqual({ cards: [], empty: true });
   });
 });

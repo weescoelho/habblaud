@@ -209,6 +209,15 @@ export function usageCardAccounts(accounts: readonly AccountInfo[]): AccountInfo
   return accounts.filter((a) => a.provider !== 'cursor');
 }
 
+/**
+ * Derivação pura do `UsageCards.render()`: as contas que ganham cartão e se a seção fica vazia.
+ * Separada do DOM para ser testável no ambiente `node` (o repositório não monta DOM nos testes).
+ */
+export function usageCardsView(accounts: readonly AccountInfo[]): { cards: AccountInfo[]; empty: boolean } {
+  const cards = usageCardAccounts(accounts);
+  return { cards, empty: cards.length === 0 };
+}
+
 export class UsageCards {
   readonly el: HTMLElement;
   private list: KeyedList<AccountInfo>;
@@ -224,10 +233,10 @@ export class UsageCards {
   }
 
   render(): void {
-    const accounts = usageCardAccounts(this.ctx.store.snapshot?.accounts ?? []);
-    this.list.sync(accounts);
-    this.el.classList.toggle('is-empty', accounts.length === 0);
-    setStyleVar(this.el, '--count', String(accounts.length));
+    const { cards, empty } = usageCardsView(this.ctx.store.snapshot?.accounts ?? []);
+    this.list.sync(cards);
+    this.el.classList.toggle('is-empty', empty);
+    setStyleVar(this.el, '--count', String(cards.length));
   }
 
   private createCard(): HTMLElement {
