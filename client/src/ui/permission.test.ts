@@ -67,10 +67,19 @@ describe('responder pelo escritório (peças puras)', () => {
     expect(permissionOptions({}, { kind: 'sub', background: true }).note).toMatch(/^Este subagente roda em segundo plano/);
   });
 
+  it('cartão do Cursor: "sempre permitir" é a regra local (quando sugerida), sem "interromper" nem motivo', () => {
+    const rule = [{ index: 0, rules: ['Shell(npm test)'], destination: 'habblaud' }];
+    expect(permissionOptions({ provider: 'cursor', suggestions: rule }, { kind: 'main' })).toEqual({ always: true, interrupt: false, reasonRequired: false, seconds: false, note: '' });
+    // Sem `suggest_rule` no pedido (hook antigo ou Shell sem comando): sem "sempre permitir".
+    expect(permissionOptions({ provider: 'cursor' }, { kind: 'main' })).toEqual({ always: false, interrupt: false, reasonRequired: false, seconds: false, note: '' });
+    expect(permissionOptions({ provider: 'cursor', suggestions: [] }, { kind: 'sub', background: true }).always).toBe(false);
+  });
+
   it('destinationLabel', () => {
     expect(destinationLabel('localSettings')).toBe('neste projeto, só para você');
     expect(destinationLabel('userSettings')).toBe('em todos os projetos');
     expect(destinationLabel('session')).toBe('só nesta sessão');
+    expect(destinationLabel('habblaud')).toBe('no Habblaud (regra local do Cursor)');
     expect(destinationLabel('outro')).toBe('outro');
   });
 
