@@ -115,7 +115,13 @@ export function toolNameOf(input) {
   return undefined;
 }
 
-/** Argumentos da ferramenta: o `tool_input` do evento; senão {command} ou {file_path} do que o evento trouxe. */
+/** Edits do `afterFileEdit` (`[{old_string,new_string}]`), quando o evento os traz; sem mascarar (a máscara é do servidor). */
+function editsOf(input) {
+  const v = input.edits;
+  return Array.isArray(v) && v.length ? v : undefined;
+}
+
+/** Argumentos da ferramenta: o `tool_input` do evento; senão {command} ou {file_path} (+ `edits` do afterFileEdit). */
 export function toolInputOf(input) {
   for (const k of ['tool_input', 'toolInput']) {
     const v = input[k];
@@ -125,9 +131,10 @@ export function toolInputOf(input) {
     const v = input[k];
     if (typeof v === 'string' && v.trim()) return { command: v };
   }
+  const edits = editsOf(input);
   for (const k of ['file_path', 'filePath']) {
     const v = input[k];
-    if (typeof v === 'string' && v.trim()) return { file_path: v };
+    if (typeof v === 'string' && v.trim()) return edits ? { file_path: v, edits } : { file_path: v };
   }
   return {};
 }

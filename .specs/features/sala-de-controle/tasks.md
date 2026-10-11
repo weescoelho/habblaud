@@ -226,10 +226,10 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] `toolInputOf` devolve `{file_path, edits:[{old_string,new_string}]}` quando o evento traz `edits`
-- [ ] Sem `edits`, o comportamento atual é idêntico (retrocompatível)
-- [ ] Gate check passes: `npm run typecheck`
-- [ ] Test count: sem remoção; (o `mod/**` não é coberto pelo vitest — verificado no T7)
+- [x] `toolInputOf` devolve `{file_path, edits:[{old_string,new_string}]}` quando o evento traz `edits`
+- [x] Sem `edits`, o comportamento atual é idêntico (retrocompatível)
+- [x] Gate check passes: `npm run typecheck`
+- [x] Test count: sem remoção; (o `mod/**` não é coberto pelo vitest — verificado no T7)
 
 **Tests**: none
 **Gate**: build
