@@ -10,7 +10,7 @@ Implement these tasks with the `tlc-spec-driven` skill: **activate it by name an
 
 **Design**: `.specs/features/cursor-poc-p4-p8/design.md`
 **Spec**: `.specs/features/cursor-poc-p4-p8/spec.md`
-**Status**: Em execução (T1 ✅, T2 ✅, T3 ✅, T4 ✅; T5–T8 pendentes)
+**Status**: Em execução (T1 ✅, T2 ✅, T3 ✅, T4 ✅, T5 ✅; T6–T8 pendentes)
 
 ---
 
@@ -221,15 +221,15 @@ T7 → T8
 
 **Done when**:
 
-- [ ] `followup --message "oi"` roda o probe, imprime `✓` e sai `0` com o `followup_message` esperado
-- [ ] Saída não-JSON do probe → o harness reporta e sai ≠ `0`
-- [ ] `server/test/cursor-poc.test.ts` cobre o caminho feliz e o de saída inválida (probe forjado)
-- [ ] Gate check passes: `npm test`
-- [ ] Test count: 3+ casos passam (sem deleções silenciosas)
+- [x] `followup --message "oi"` roda o probe, imprime `✓` e sai `0` com o `followup_message` esperado
+- [x] Saída não-JSON do probe → o harness reporta e sai ≠ `0`
+- [x] `server/test/cursor-poc.test.ts` cobre o caminho feliz e o de saída inválida (probe forjado)
+- [x] Gate check passes: `npm test`
+- [x] Test count: 3+ casos passam (sem deleções silenciosas)
 
 **Tests**: integration
 **Gate**: full
-**Status**: ⬜ Pending
+**Status**: ✅ Complete
 
 **Commit**: `feat(cursor): subcomando followup que valida o probe (p6)`
 

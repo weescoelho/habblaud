@@ -6,6 +6,7 @@
 //   npm run cursor:poc:report                           # matriz "evento → dispara? (contagem) → campos"
 //   npm run cursor:poc:subagents                        # correlaciona subagentStart/subagentStop (P4)
 //   npm run cursor:poc:cli        [-- --path <arquivo>] # caracteriza o NDJSON do cursor-agent (P5)
+//   npm run cursor:poc:followup   [-- --message <texto>] # roda o probe do `stop` e valida a forma (P6)
 //   npm run cursor:poc:usage      [-- --path <dir>]     # lista os candidatos de uso/plano do Cursor (P8)
 //   npm run cursor:poc:decision   [-- --hold N]         # mede o bloqueio do hook de decisão contra um stub local
 //
@@ -27,6 +28,8 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const HOOK_SCRIPT = join(ROOT, 'mod', 'habblaud-cursor', 'poc-hook.mjs');
 /** O hook REAL de decisão/observação do Cursor (T14) — o alvo medido pelo subcomando `decision`. */
 export const DECISION_HOOK = join(ROOT, 'mod', 'habblaud-cursor', 'hook.mjs');
+/** O probe de followup do harness (P6) — o alvo validado pelo subcomando `followup`. */
+export const FOLLOWUP_HOOK = join(ROOT, 'mod', 'habblaud-cursor', 'followup-hook.mjs');
 /** Segundos que o stub segura antes de decidir (padrão do subcomando `decision`). */
 export const DEFAULT_HOLD_S = 2;
 /** Limite seguro (segundos) de bloqueio do hook de decisão; acima disso, o harness avisa e sai ≠ 0. */
@@ -71,6 +74,8 @@ const USAGE = `Uso: npm run cursor:poc:<subcomando> -- [opções]
                                 ~/.cursor-server, ~/.config/Cursor; ou --path) e lista os
                                 candidatos (JSON: chaves de topo; SQLite: tabelas+contagens),
                                 sem rede e sem imprimir valores
+  followup [--message <texto>]  roda o probe de followup com um stop sintético e valida
+                                a forma {"followup_message": <texto>} (P6)
   decision [--hold <N>] [--limit <S>]
                                 sobe um stub local, roda o hook de decisão com um
                                 beforeShellExecution sintético e mede o bloqueio;
@@ -94,6 +99,7 @@ export type RunOptions =
   | { command: 'subagents' }
   | { command: 'cli'; path?: string }
   | { command: 'usage'; path?: string }
+  | { command: 'followup'; message?: string }
   | { command: 'decision'; holdS: number; limitS: number };
 
 class FatalError extends Error {}
@@ -173,6 +179,19 @@ export function parseArgs(argv: string[]): RunOptions | 'help' {
       }
     }
     return { command: 'usage', path };
+  }
+  if (command === 'followup') {
+    let message: string | undefined;
+    for (let i = 0; i < rest.length; i++) {
+      const a = rest[i];
+      if (a === '--message') {
+        message = rest[++i];
+        if (message === undefined) throw new FatalError('--message precisa de um texto.');
+      } else {
+        throw new FatalError(`opção desconhecida: ${a}`);
+      }
+    }
+    return { command: 'followup', message };
   }
   if (command === 'decision') {
     let holdS = DEFAULT_HOLD_S;
@@ -722,6 +741,70 @@ function formatUsageHit(hit: UsageHit, home: string): string {
   return `${tildify(hit.path, home)}  ${hit.size} B  ${new Date(hit.mtimeMs).toISOString()}  [${hit.kind}]`;
 }
 
+// ---------------------------------------------------------------- followup (P6)
+
+/** Caminho do probe de followup: HABBLAUD_CURSOR_POC_FOLLOWUP_HOOK (testes) ou o probe do harness. */
+export function followupHookPath(env: NodeJS.ProcessEnv): string {
+  const custom = typeof env.HABBLAUD_CURSOR_POC_FOLLOWUP_HOOK === 'string' ? env.HABBLAUD_CURSOR_POC_FOLLOWUP_HOOK.trim() : '';
+  return custom || FOLLOWUP_HOOK;
+}
+
+interface ProbeRunResult {
+  code: number | null;
+  stdout: string;
+}
+
+/** Spawna um hook com um evento no `stdin` e captura a saída (molde do `runDecisionHook`). */
+function runProbe(hookPath: string, event: unknown, env: NodeJS.ProcessEnv): Promise<ProbeRunResult> {
+  return new Promise((ok, fail) => {
+    const child = spawn(process.execPath, [hookPath], { env, stdio: ['pipe', 'pipe', 'pipe'] });
+    let stdout = '';
+    child.stdout.setEncoding('utf8').on('data', (c: string) => (stdout += c));
+    child.stderr.resume();
+    const kill = setTimeout(() => child.kill('SIGKILL'), 30_000);
+    child.on('error', fail);
+    child.on('close', (code) => {
+      clearTimeout(kill);
+      ok({ code, stdout });
+    });
+    child.stdin.end(JSON.stringify(event));
+  });
+}
+
+/**
+ * Roda o probe de followup com um `stop` sintético e valida que a saída é um JSON com
+ * `followup_message` string. Saída inválida, código ≠ 0 ou erro do spawn → mensagem e código ≠ 0.
+ */
+async function runFollowup(opts: { message?: string }, ctx: RunContext): Promise<number> {
+  const hook = followupHookPath(ctx.env);
+  const env: NodeJS.ProcessEnv = { PATH: process.env.PATH, HOME: ctx.home };
+  if (opts.message !== undefined) env.HABBLAUD_CURSOR_POC_FOLLOWUP = opts.message;
+  let r: ProbeRunResult;
+  try {
+    r = await runProbe(hook, { hook_event_name: 'stop' }, env);
+  } catch (err) {
+    ctx.err(`✗ não consegui rodar o probe ${tildify(hook, ctx.home)} (${(err as Error).message}).`);
+    return 1;
+  }
+  const text = r.stdout.trim();
+  if (r.code !== 0) {
+    ctx.err(`✗ o probe saiu com código ${r.code} (${text || 'sem saída'}).`);
+    return 1;
+  }
+  let parsed: { followup_message?: unknown } | undefined;
+  try {
+    parsed = text ? (JSON.parse(text) as { followup_message?: unknown }) : undefined;
+  } catch {
+    parsed = undefined;
+  }
+  if (!parsed || typeof parsed.followup_message !== 'string') {
+    ctx.err(`✗ o probe não devolveu {"followup_message": <string>}: ${text || 'saída vazia'}.`);
+    return 1;
+  }
+  ctx.out(`✓ followup_message: ${parsed.followup_message}`);
+  return 0;
+}
+
 // ---------------------------------------------------------------- execução
 
 export interface RunContext {
@@ -756,6 +839,8 @@ export async function run(opts: RunOptions, ctx: RunContext): Promise<number> {
       return runCli(opts, ctx);
     case 'usage':
       return runUsage(opts, ctx);
+    case 'followup':
+      return runFollowup(opts, ctx);
     case 'decision':
       return runDecision(opts, ctx);
   }

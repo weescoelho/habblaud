@@ -565,3 +565,46 @@ describe('cursor-poc.ts cli (P5)', () => {
     expect(`${r.stdout}${r.stderr}`).toMatch(/não encontrado/i);
   });
 });
+
+describe('cursor-poc.ts followup (P6)', () => {
+  it('--message "oi": roda o probe, imprime ✓ e sai 0 com o followup_message esperado', () => {
+    const r = cli(['followup', '--message', 'oi']);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('✓');
+    expect(r.stdout).toContain('oi');
+  });
+
+  it('sem --message: usa o texto padrão do probe (ainda ✓ e saída 0)', () => {
+    const r = cli(['followup']);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('✓');
+    expect(r.stdout).toMatch(/followup_message: \S/);
+  });
+
+  it('probe forjado com saída não-JSON: reporta e sai ≠ 0', () => {
+    const fake = write('probe-forjado.mjs', 'process.stdout.write("isto não é json\\n");\n');
+    const r = cli(['followup'], { HABBLAUD_CURSOR_POC_FOLLOWUP_HOOK: fake });
+    expect(r.status).not.toBe(0);
+    expect(`${r.stdout}${r.stderr}`).toMatch(/followup_message/);
+  });
+
+  it('probe forjado que sai ≠ 0: reporta e o harness sai ≠ 0', () => {
+    const fake = write('probe-falho.mjs', 'process.exit(2);\n');
+    const r = cli(['followup'], { HABBLAUD_CURSOR_POC_FOLLOWUP_HOOK: fake });
+    expect(r.status).not.toBe(0);
+    expect(`${r.stdout}${r.stderr}`).toMatch(/código 2/);
+  });
+
+  it('--message sem valor: erro e código ≠ 0', () => {
+    const r = cli(['followup', '--message']);
+    expect(r.status).not.toBe(0);
+    expect(`${r.stdout}${r.stderr}`).toMatch(/--message/);
+  });
+
+  it('--help lista o subcomando followup e a opção --message', () => {
+    const r = cli(['--help']);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('followup');
+    expect(r.stdout).toContain('--message');
+  });
+});
