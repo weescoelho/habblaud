@@ -75,6 +75,39 @@ describe('parseCursorEvent', () => {
   it('session_id como fallback do conversation_id', () => {
     expect(parseCursorEvent({ hook_event_name: 'stop', session_id: 'sess-9' })?.conversationId).toBe('sess-9');
   });
+
+  it('lê os quatro campos de token (stop/afterAgentResponse) em snake_case', () => {
+    expect(parseCursorEvent({ hook_event_name: 'stop', input_tokens: 100, output_tokens: 40, cache_read_tokens: 20, cache_write_tokens: 5 })?.tokens).toEqual({
+      input: 100,
+      output: 40,
+      cacheRead: 20,
+      cacheWrite: 5,
+    });
+  });
+
+  it('lê aliases camelCase dos campos de token', () => {
+    expect(parseCursorEvent({ hook_event_name: 'stop', inputTokens: 1, outputTokens: 2, cacheReadTokens: 3, cacheWriteTokens: 4 })?.tokens).toEqual({
+      input: 1,
+      output: 2,
+      cacheRead: 3,
+      cacheWrite: 4,
+    });
+  });
+
+  it('sem nenhum campo de token, `tokens` fica undefined', () => {
+    const ev = parseCursorEvent({ hook_event_name: 'stop' });
+    expect(ev?.tokens).toBeUndefined();
+    expect(ev).not.toHaveProperty('tokens');
+  });
+
+  it('campo não numérico é ignorado (0), sem lançar; só o output presente preenche o resto com 0', () => {
+    expect(parseCursorEvent({ hook_event_name: 'stop', input_tokens: 'muitos', output_tokens: 7 })?.tokens).toEqual({
+      input: 0,
+      output: 7,
+      cacheRead: 0,
+      cacheWrite: 0,
+    });
+  });
 });
 
 describe('describeCursorTool', () => {

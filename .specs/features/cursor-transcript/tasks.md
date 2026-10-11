@@ -148,12 +148,12 @@ T6
 
 **Done when**:
 
-- [ ] um `stop` com os quatro campos normaliza `tokens = { input, output, cacheRead, cacheWrite }`
-- [ ] um evento sem nenhum campo de token fica sem `tokens`; um campo não numérico é ignorado (`0`), sem lançar
-- [ ] aliases camelCase (`inputTokens`, `cacheReadTokens`…) também são lidos
-- [ ] `server/sources/cursor/rollout.test.ts` cobre os casos acima
-- [ ] Gate check passes: `npx vitest run server/sources/cursor/rollout.test.ts`
-- [ ] Test count: 6+ casos passam (sem deleções silenciosas)
+- [x] um `stop` com os quatro campos normaliza `tokens = { input, output, cacheRead, cacheWrite }`
+- [x] um evento sem nenhum campo de token fica sem `tokens`; um campo não numérico é ignorado (`0`), sem lançar
+- [x] aliases camelCase (`inputTokens`, `cacheReadTokens`…) também são lidos
+- [x] `server/sources/cursor/rollout.test.ts` cobre os casos acima
+- [x] Gate check passes: `npx vitest run server/sources/cursor/rollout.test.ts`
+- [x] Test count: 6+ casos passam (sem deleções silenciosas)
 
 **Tests**: unit
 **Gate**: quick

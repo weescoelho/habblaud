@@ -35,6 +35,23 @@ function firstRec(...vals: unknown[]): Rec | undefined {
   return undefined;
 }
 
+/** Número finito (os campos de token do hook); qualquer outra coisa é ignorada. */
+function num(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+}
+
+/** Tokens de um evento de hook (só quando algum dos quatro campos é número finito). */
+export interface CursorTokens {
+  /** `input_tokens`. */
+  input: number;
+  /** `output_tokens`. */
+  output: number;
+  /** `cache_read_tokens`. */
+  cacheRead: number;
+  /** `cache_write_tokens`. */
+  cacheWrite: number;
+}
+
 /** Evento de hook do Cursor normalizado. */
 export interface CursorEvent {
   /** `hook_event_name`. */
@@ -56,6 +73,8 @@ export interface CursorEvent {
   command?: string;
   /** `transcript_path` (P0). */
   transcriptPath?: string;
+  /** Tokens do turno (`stop`/`afterAgentResponse`); ausente quando o evento não traz nenhum campo. */
+  tokens?: CursorTokens;
 }
 
 /**
@@ -74,6 +93,12 @@ export function parseCursorEvent(input: Record<string, unknown>): CursorEvent | 
   const toolInput = firstRec(input.tool_input, input.toolInput);
   const command = firstStr(input.command, input.cmd);
   const transcriptPath = firstStr(input.transcript_path, input.transcriptPath);
+  // Campos de token (`stop`/`afterAgentResponse`): cada ausente/não numérico vale 0; sem nenhum campo útil,
+  // `tokens` fica `undefined` (o acumulado não é tocado). Aliases camelCase cobrem variações do hook.
+  const inputTok = num(input.input_tokens) ?? num(input.inputTokens);
+  const outputTok = num(input.output_tokens) ?? num(input.outputTokens);
+  const cacheRead = num(input.cache_read_tokens) ?? num(input.cacheReadTokens);
+  const cacheWrite = num(input.cache_write_tokens) ?? num(input.cacheWriteTokens);
   if (conversationId) event.conversationId = conversationId;
   if (workspaceRoot) event.workspaceRoot = workspaceRoot;
   if (cwd) event.cwd = cwd;
@@ -81,6 +106,9 @@ export function parseCursorEvent(input: Record<string, unknown>): CursorEvent | 
   if (toolInput) event.toolInput = toolInput;
   if (command) event.command = command;
   if (transcriptPath) event.transcriptPath = transcriptPath;
+  if (inputTok !== undefined || outputTok !== undefined || cacheRead !== undefined || cacheWrite !== undefined) {
+    event.tokens = { input: inputTok ?? 0, output: outputTok ?? 0, cacheRead: cacheRead ?? 0, cacheWrite: cacheWrite ?? 0 };
+  }
   return event;
 }
 
