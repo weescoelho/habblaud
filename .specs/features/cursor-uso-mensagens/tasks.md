@@ -164,12 +164,12 @@ no raiz, commit da nota + bump do submódulo (padrão do commit lateral das Fase
 
 **Done when**:
 
-- [ ] nota da Fase 5 no §6.8 do roteiro (raiz), no estilo das anteriores
-- [ ] `.specs/STATE.md` com Handoff da Fase 5 (decisões, resultados, próximos passos/lacunas ao vivo)
-- [ ] this `tasks.md` todo `[x]` com rastreabilidade atualizada
-- [ ] Gate check passes: `npm run typecheck && npm test && npm run build` (submódulo)
-- [ ] Commits: `docs(cursor): registrar uso e mensagens do cursor no roteiro` (submódulo) e nota+bump na raiz
-- [ ] Árvore do submódulo limpa (sem pendências)
+- [x] nota da Fase 5 no §6.8 do roteiro (raiz), no estilo das anteriores
+- [x] `.specs/STATE.md` com Handoff da Fase 5 (decisões, resultados, próximos passos/lacunas ao vivo)
+- [x] this `tasks.md` todo `[x]` com rastreabilidade atualizada
+- [x] Gate check passes: `npm run typecheck && npm test && npm run build` (submódulo)
+- [x] Commits: `docs(cursor): registrar uso e mensagens do cursor no roteiro` (submódulo) e nota+bump na raiz
+- [x] Árvore do submódulo limpa (sem pendências)
 
 **Tests**: none
 **Gate**: build
