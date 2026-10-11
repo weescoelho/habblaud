@@ -43,6 +43,7 @@
     "cursor:install": "tsx scripts/cursor-install.ts install",
     "cursor:uninstall": "tsx scripts/cursor-install.ts uninstall",
     "cursor:status": "tsx scripts/cursor-install.ts status",
+    "cursor:setup": "tsx scripts/cursor-install.ts setup",
     "cursor:poc:install": "tsx scripts/cursor-poc.ts install",
     "cursor:poc:uninstall": "tsx scripts/cursor-poc.ts uninstall",
     "cursor:poc:report": "tsx scripts/cursor-poc.ts report",

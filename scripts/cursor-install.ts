@@ -4,7 +4,12 @@
 //   npm run cursor:install -- --project <dir>   # em <dir>/.cursor/hooks.json (dir padrão = atual)
 //   npm run cursor:uninstall      # remove só o hook do Habblaud (os outros hooks ficam)
 //   npm run cursor:status         # informa se o hook está instalado em cada evento
+//   npm run cursor:setup          # de uma vez: tira a POC (se estiver), instala o hook e grava a camada base
 //   (qualquer comando aceita --dry-run: mostra o que mudaria, sem gravar nada)
+//
+// O `setup` é o caminho de outra máquina: além de instalar o hook (EVENTS) e remover entradas do poc-hook (ele só
+// observa, não decide), grava a camada base que faz o Cursor parar de perguntar — ~/.habblaud/cursor-hook.json
+// (regras locais: allow do resto + denies de guarda) e ~/.cursor/permissions.json (Run Mode Auto-review).
 //
 // O hook (mod/habblaud-cursor/hook.mjs) observa os eventos da IDE no escritório e, nos eventos de decisão
 // (por padrão beforeShellExecution e beforeMCPExecution; a política local pode reativar outros com
@@ -27,7 +32,7 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { quotePath, readSettings, tildify, writeSettings, type Settings } from './statusline-install';
-import { countLocalDecisions, DEFAULT_DECISION_EVENTS, readCursorConfig } from '../server/permissions/cursor-rules';
+import { countLocalDecisions, DEFAULT_DECISION_EVENTS, readCursorConfig, writeCursorRule, type CursorRule } from '../server/permissions/cursor-rules';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 /** O hook real do Cursor (o mesmo que o harness P1 usa é o poc-hook, de observação; aqui é o de decisão/observação). */
@@ -53,12 +58,52 @@ export const EVENTS = [
   'stop',
 ] as const;
 
-const USAGE = `Uso: npm run cursor:<install|uninstall|status> [-- opções]
+/** O hook de observação da POC (só captura, não decide): o setup tira as entradas dele, quem decide é o hook.mjs. */
+export const POC_HOOK_SCRIPT = join(ROOT, 'mod', 'habblaud-cursor', 'poc-hook.mjs');
+const POC_MARK = /habblaud-cursor[\\/]+poc-hook\.mjs/;
+
+/**
+ * Regras locais padrão do setup (bloco `rules` de ~/.habblaud/cursor-hook.json): um `allow` do resto no FIM e os
+ * `deny` de guarda antes dele. O hook aplica deny > allow, então a ordem no arquivo não importa, mas assim fica legível.
+ */
+export const SETUP_RULES: CursorRule[] = [
+  { tool: 'Shell', pattern: '^rm(\\s|$)', effect: 'deny', note: 'apagar arquivos' },
+  { tool: 'Shell', pattern: '^sudo(\\s|$)', effect: 'deny', note: 'sudo' },
+  { tool: 'Shell', pattern: '^su(\\s|$)', effect: 'deny', note: 'trocar de usuário' },
+  { tool: 'Shell', pattern: '^chmod(\\s|$)', effect: 'deny', note: 'permissões de arquivo' },
+  { tool: 'Shell', pattern: '^git push.*-f(\\s|$)', effect: 'deny', note: 'force push' },
+  { tool: 'Shell', pattern: '\\|\\s*(sh|bash)(\\s|$)', effect: 'deny', note: 'script baixado na hora' },
+  { tool: 'Shell', pattern: '.*', effect: 'allow', note: 'demais comandos' },
+];
+
+/** Camada base do Cursor (Run Mode Auto-review) que o setup grava em ~/.cursor/permissions.json. */
+export const SETUP_PERMISSIONS = {
+  autoRun: {
+    allow_instructions: [
+      'Always allow: cd <path> and pwd.',
+      'Always allow: ls (including flags, e.g. ls -la) and clear.',
+      'Always allow: echo <text> and touch <file>.',
+      'Always allow: git status, git branch, git log, git diff, git remote -v.',
+      "Always allow: the current project's package.json scripts (npm run <script>, pnpm <script>, yarn <script>).",
+      'Always allow: version checks (node -v, npm -v, pnpm -v, yarn -v).',
+    ],
+    block_instructions: [
+      'Always ask before deleting files or directories (rm, rm -rf, rmdir).',
+      'Always ask before sudo, su or chmod.',
+      'Always ask before git push --force, git reset --hard or git clean -f.',
+      'Always ask before piping a remote script into the shell (curl <url> | sh / bash).',
+    ],
+  },
+};
+
+const USAGE = `Uso: npm run cursor:<install|uninstall|status|setup> [-- opções]
 
   install [--project [dir]]   acrescenta o hook do Habblaud em ~/.cursor/hooks.json (backup antes;
                               com --project, em <dir>/.cursor/hooks.json; dir padrão = diretório atual)
   uninstall [--project [dir]] remove só o hook do Habblaud (os outros hooks ficam)
   status  [--project [dir]]   informa se o hook está instalado em cada evento
+  setup   [--project [dir]]   install + tira a POC, se estiver; grava ~/.habblaud/cursor-hook.json (regras
+                              locais) e ~/.cursor/permissions.json (camada base do Cursor, Auto-review)
 
 Opções:
   --dry-run        mostra o que mudaria, sem gravar nada
@@ -88,6 +133,27 @@ export function hookCommand(hookPath: string): string {
 /** Uma entrada é do Habblaud? (o comando aponta para o hook.mjs). */
 function isOurEntry(entry: unknown): entry is { command: string } {
   return isObject(entry) && typeof entry.command === 'string' && HOOK_MARK.test(entry.command);
+}
+
+/** Uma entrada é do hook de observação da POC? (o comando aponta para o poc-hook.mjs). */
+function isPocEntry(entry: unknown): entry is { command: string } {
+  return isObject(entry) && typeof entry.command === 'string' && POC_MARK.test(entry.command);
+}
+
+/** Tira só as entradas da POC; as demais ficam. Formato desconhecido: nada é tocado (removed = 0). */
+function stripPoc(settings: Settings): { settings: Settings; removed: number } {
+  const parsed = hooksOf(settings);
+  if (typeof parsed === 'string') return { settings, removed: 0 };
+  const hooks: Rec = {};
+  let removed = 0;
+  for (const [event, raw] of Object.entries(parsed)) {
+    const list = raw as unknown[];
+    const kept = list.filter((e) => !isPocEntry(e));
+    removed += list.length - kept.length;
+    if (kept.length) hooks[event] = kept;
+  }
+  if (!removed) return { settings, removed: 0 };
+  return { settings: { ...settings, hooks }, removed };
 }
 
 /** JSON com as chaves em ordem (para comparar entradas sem depender da ordem em que foram gravadas). */
@@ -232,6 +298,7 @@ export function installState(settings: Settings, command: string, events: readon
 
 export type RunOptions =
   | { command: 'install' | 'uninstall'; dryRun: boolean; project: string | boolean }
+  | { command: 'setup'; dryRun: boolean; project: string | boolean }
   | { command: 'status'; project: string | boolean };
 
 export interface RunContext {
@@ -248,7 +315,7 @@ class FatalError extends Error {}
 export function parseArgs(argv: string[]): RunOptions | 'help' {
   if (!argv.length || argv.includes('-h') || argv.includes('--help')) return 'help';
   const [command, ...rest] = argv;
-  if (command !== 'install' && command !== 'uninstall' && command !== 'status') throw new FatalError(`subcomando desconhecido: ${command}\n\n${USAGE}`);
+  if (command !== 'install' && command !== 'uninstall' && command !== 'status' && command !== 'setup') throw new FatalError(`subcomando desconhecido: ${command}\n\n${USAGE}`);
   let project: string | boolean = false;
   let dryRun = false;
   for (let i = 0; i < rest.length; i++) {
@@ -303,6 +370,71 @@ function applyPlan(ctx: RunContext, file: string, read: { settings: Settings; ra
   }
 }
 
+/** Grava a camada base: regras locais (~/.habblaud/cursor-hook.json) e a allowlist do Cursor. Devolve 0 se tudo ok. */
+function writeSetupConfig(ctx: RunContext, dryRun: boolean): number {
+  let code = 0;
+  // 1) Regras locais: só semeia quando ainda não há nenhuma (não sobrescreve escolhas do usuário).
+  const cfgFile = join(ctx.home, '.habblaud', 'cursor-hook.json');
+  const cfgLabel = tildify(cfgFile, ctx.home);
+  const cfgRead = readSettings(cfgFile);
+  const existing = readCursorConfig(ctx.home);
+  if ('error' in cfgRead) {
+    ctx.out(`✗ ${cfgLabel}: ${cfgRead.error}`);
+    code = 1;
+  } else if (existing.rules.length) {
+    ctx.out(`= ${cfgLabel}: já tem ${existing.rules.length} ${existing.rules.length === 1 ? 'regra local' : 'regras locais'} (mantidas)`);
+  } else if (dryRun) {
+    ctx.out(`~ ${cfgLabel}: gravaria ${SETUP_RULES.length} regras locais (simulação: nada gravado)`);
+  } else {
+    let failed: string | undefined;
+    for (const rule of SETUP_RULES) {
+      const r = writeCursorRule(ctx.home, rule);
+      if (!r.ok) failed = r.error;
+    }
+    if (failed) {
+      ctx.out(`✗ ${cfgLabel}: não consegui gravar (${failed})`);
+      code = 1;
+    } else {
+      ctx.out(`✓ ${cfgLabel}: ${SETUP_RULES.length} regras locais (allow do resto + ${SETUP_RULES.length - 1} denies de guarda)`);
+    }
+  }
+
+  // 2) Camada base do Cursor: mergeia as instruções no autoRun, preservando o resto do arquivo.
+  const permFile = join(ctx.home, '.cursor', 'permissions.json');
+  const permLabel = tildify(permFile, ctx.home);
+  const permRead = readSettings(permFile);
+  if ('error' in permRead) {
+    ctx.out(`✗ ${permLabel}: ${permRead.error}`);
+    code = 1;
+  } else {
+    const base = isObject(permRead.settings) ? permRead.settings : {};
+    const baseAuto = isObject(base.autoRun) ? base.autoRun : {};
+    const mergeList = (key: 'allow_instructions' | 'block_instructions'): string[] => {
+      const cur = Array.isArray(baseAuto[key]) ? (baseAuto[key] as unknown[]).filter((s): s is string => typeof s === 'string') : [];
+      const out = [...cur];
+      for (const s of SETUP_PERMISSIONS.autoRun[key]) if (!out.includes(s)) out.push(s);
+      return out;
+    };
+    const out: Rec = { ...base, autoRun: { ...baseAuto, allow_instructions: mergeList('allow_instructions'), block_instructions: mergeList('block_instructions') } };
+    const noop = JSON.stringify(out) === JSON.stringify(permRead.settings);
+    if (noop) {
+      ctx.out(`= ${permLabel}: já configurado`);
+    } else if (dryRun) {
+      ctx.out(`~ ${permLabel}: gravaria ${SETUP_PERMISSIONS.autoRun.allow_instructions.length} liberações + ${SETUP_PERMISSIONS.autoRun.block_instructions.length} bloqueios (simulação: nada gravado)`);
+    } else {
+      try {
+        mkdirSync(join(ctx.home, '.cursor'), { recursive: true });
+        const backup = writeSettings(permFile, out, permRead.raw, ctx.now);
+        ctx.out(`✓ ${permLabel}: ${SETUP_PERMISSIONS.autoRun.allow_instructions.length} liberações + ${SETUP_PERMISSIONS.autoRun.block_instructions.length} bloqueios${backup ? ` · backup em ${tildify(backup, ctx.home)}` : ''}`);
+      } catch (err) {
+        ctx.out(`✗ ${permLabel}: não consegui gravar (${(err as Error).message})`);
+        code = 1;
+      }
+    }
+  }
+  return code;
+}
+
 /** Executa o comando sobre o destino. Devolve o código de saída (0 = sucesso). */
 export function run(opts: RunOptions, ctx: RunContext): number {
   const file = hooksFileOf(ctx, opts.project);
@@ -332,6 +464,26 @@ export function run(opts: RunOptions, ctx: RunContext): number {
       `Configuração do hook: ${tildify(join(ctx.home, '.habblaud', 'cursor-hook.json'), ctx.home)} → eventos de decisão: ${events.join(', ')}${cfg.decisionEvents ? '' : ' (padrão)'}; regras locais: ${cfg.rules.length}; decisões locais: ${countLocalDecisions(ctx.home)}; porta 4747 e espera 25 s por padrão.`,
     );
     return 0;
+  }
+  if (opts.command === 'setup') {
+    // Tira a POC (só observa), instala o hook e grava a camada base que faz o Cursor parar de perguntar.
+    const { settings: stripped, removed } = stripPoc(read.settings);
+    const plan = planInstall(stripped, command, EVENTS);
+    if (plan.action === 'skip') {
+      ctx.out(`✗ ${label}: ${plan.message}`);
+      return 1;
+    }
+    const effective: PlanAction =
+      removed && plan.action !== 'install'
+        ? { action: 'install', settings: stripped, message: `poc-hook removido (${removed} ${removed === 1 ? 'entrada' : 'entradas'})` }
+        : plan.action === 'install'
+          ? { action: 'install', settings: plan.settings, message: removed ? `${plan.message}; poc-hook removido (${removed})` : plan.message }
+          : plan;
+    const hooksCode = applyPlan(ctx, file, read, effective, opts.dryRun);
+    if (hooksCode) return hooksCode;
+    const cfgCode = writeSetupConfig(ctx, opts.dryRun);
+    ctx.out('Próximos passos: reinicie o Cursor e escolha o Run Mode "Auto-review" (Settings > Agents > Approvals & Execution).');
+    return cfgCode;
   }
   const plan = opts.command === 'install' ? planInstall(read.settings, command, EVENTS) : planUninstall(read.settings);
   return applyPlan(ctx, file, read, plan, opts.dryRun);
