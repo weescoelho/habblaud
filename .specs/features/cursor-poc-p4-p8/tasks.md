@@ -10,7 +10,7 @@ Implement these tasks with the `tlc-spec-driven` skill: **activate it by name an
 
 **Design**: `.specs/features/cursor-poc-p4-p8/design.md`
 **Spec**: `.specs/features/cursor-poc-p4-p8/spec.md`
-**Status**: Em execução (T1 ✅; T2–T8 pendentes)
+**Status**: Em execução (T1 ✅, T2 ✅; T3–T8 pendentes)
 
 ---
 
@@ -128,16 +128,16 @@ T7 → T8
 
 **Done when**:
 
-- [ ] `HARNESS_EVENTS` inclui `subagentStart`/`subagentStop`; `install` passa a gravá-los (teste confirma os 17 eventos no `hooks.json`)
-- [ ] `correlateSubagents(events)` casa Start↔Stop pelo id, marca órfão quando falta o Start e reporta o pai quando há `parent_conversation_id`
-- [ ] Sem eventos de subagente → "não observado" e saída `0`; `events.jsonl` com linhas corrompidas não lança
-- [ ] `server/test/cursor-poc.test.ts` cobre: par casado, órfão, nenhum; e o `install` com os dois eventos novos
-- [ ] Gate check passes: `npx vitest run server/test/cursor-poc.test.ts`
-- [ ] Test count: 5+ casos passam (sem deleções silenciosas)
+- [x] `HARNESS_EVENTS` inclui `subagentStart`/`subagentStop`; `install` passa a gravá-los (teste confirma os 17 eventos no `hooks.json`)
+- [x] `correlateSubagents(events)` casa Start↔Stop pelo id, marca órfão quando falta o Start e reporta o pai quando há `parent_conversation_id`
+- [x] Sem eventos de subagente → "não observado" e saída `0`; `events.jsonl` com linhas corrompidas não lança
+- [x] `server/test/cursor-poc.test.ts` cobre: par casado, órfão, nenhum; e o `install` com os dois eventos novos
+- [x] Gate check passes: `npx vitest run server/test/cursor-poc.test.ts`
+- [x] Test count: 5+ casos passam (sem deleções silenciosas)
 
 **Tests**: unit
 **Gate**: quick
-**Status**: ⬜ Pending
+**Status**: ✅ Complete
 
 **Commit**: `feat(cursor): subcomando subagents e hooks de subagente (p4)`
 

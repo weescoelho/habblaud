@@ -411,3 +411,71 @@ describe('cursor-poc.ts usage (P8)', () => {
     }
   });
 });
+
+/** Escreve um `events.jsonl` de captura sintético no HOME dado (formato do poc-hook: {ts, dir, event}). */
+function capture(home: string, events: Array<Record<string, unknown>>): void {
+  const dir = join(home, '.habblaud', 'cursor-poc');
+  mkdirSync(dir, { recursive: true });
+  const lines = events.map((event) => JSON.stringify({ ts: 't', dir: '/p', event }));
+  writeFileSync(join(dir, 'events.jsonl'), `${lines.join('\n')}\n`);
+}
+
+describe('cursor-poc.ts subagents (P4)', () => {
+  it('install: passa a instalar subagentStart/subagentStop no hooks.json (17 eventos)', () => {
+    const home = join(tmp.dir, 'home');
+    const r = cli(['install'], { HOME: home });
+    expect(r.status).toBe(0);
+    const saved = JSON.parse(readFileSync(join(home, '.cursor', 'hooks.json'), 'utf8')) as { hooks?: Record<string, unknown[]> };
+    const names = Object.keys(saved.hooks ?? {});
+    expect(names).toContain('subagentStart');
+    expect(names).toContain('subagentStop');
+    expect(names).toHaveLength(17);
+  });
+
+  it('par casado por id: reporta o par como casado e mostra o pai', () => {
+    const home = join(tmp.dir, 'home');
+    capture(home, [
+      { hook_event_name: 'subagentStart', subagent_id: 's1', parent_conversation_id: 'pai-1' },
+      { hook_event_name: 'subagentStop', subagent_id: 's1', parent_conversation_id: 'pai-1' },
+    ]);
+    const r = cli(['subagents'], { HOME: home });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/par s1\s+casado/);
+    expect(r.stdout).toContain('pai: pai-1');
+  });
+
+  it('órfão: um stop sem start é reportado como órfão', () => {
+    const home = join(tmp.dir, 'home');
+    capture(home, [{ hook_event_name: 'subagentStop', subagent_id: 's2' }]);
+    const r = cli(['subagents'], { HOME: home });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/órfão s2/);
+  });
+
+  it('evento de subagente sem id: reporta sem-correlação (sem falhar)', () => {
+    const home = join(tmp.dir, 'home');
+    capture(home, [{ hook_event_name: 'subagentStart', cwd: '/p' }]);
+    const r = cli(['subagents'], { HOME: home });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/sem-correlação/);
+  });
+
+  it('sem eventos de subagente: imprime "não observado" e sai 0', () => {
+    const home = join(tmp.dir, 'home');
+    capture(home, [{ hook_event_name: 'preToolUse', conversation_id: 'c1' }]);
+    const r = cli(['subagents'], { HOME: home });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/não observado/i);
+  });
+
+  it('events.jsonl com linha corrompida: ignora e segue (sai 0)', () => {
+    const home = join(tmp.dir, 'home');
+    const dir = join(home, '.habblaud', 'cursor-poc');
+    mkdirSync(dir, { recursive: true });
+    const good = JSON.stringify({ ts: 't', dir: '/p', event: { hook_event_name: 'subagentStart', subagent_id: 's3' } });
+    writeFileSync(join(dir, 'events.jsonl'), `{ linha quebrada\n${good}\n`);
+    const r = cli(['subagents'], { HOME: home });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/par s3/);
+  });
+});

@@ -46,6 +46,7 @@
     "cursor:poc:install": "tsx scripts/cursor-poc.ts install",
     "cursor:poc:uninstall": "tsx scripts/cursor-poc.ts uninstall",
     "cursor:poc:report": "tsx scripts/cursor-poc.ts report",
+    "cursor:poc:subagents": "tsx scripts/cursor-poc.ts subagents",
     "cursor:poc:transcript": "tsx scripts/cursor-poc.ts transcript",
     "cursor:poc:decision": "tsx scripts/cursor-poc.ts decision",
     "cursor:poc:usage": "tsx scripts/cursor-poc.ts usage",

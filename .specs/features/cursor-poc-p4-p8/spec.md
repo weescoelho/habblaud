@@ -204,11 +204,11 @@ Each requirement gets a unique ID for tracking across design, tasks, and validat
 | CP48-02        | S1: Uso     | Design | Implementing |
 | CP48-03        | S1: Uso     | Design | Implementing |
 | CP48-04        | S1: Uso     | Design | Implementing |
-| CP48-05        | S2: Subagentes | Design | Pending |
-| CP48-06        | S2: Subagentes | Design | Pending |
-| CP48-07        | S2: Subagentes | Design | Pending |
-| CP48-08        | S2: Subagentes | Design | Pending |
-| CP48-09        | S2: Subagentes | Design | Pending |
+| CP48-05        | S2: Subagentes | Design | Implementing |
+| CP48-06        | S2: Subagentes | Design | Implementing |
+| CP48-07        | S2: Subagentes | Design | Implementing |
+| CP48-08        | S2: Subagentes | Design | Implementing |
+| CP48-09        | S2: Subagentes | Design | Implementing |
 | CP48-10        | S3: CLI     | Design | Pending |
 | CP48-11        | S3: CLI     | Design | Pending |
 | CP48-12        | S3: CLI     | Design | Pending |

@@ -4,6 +4,7 @@
 //   npm run cursor:poc:install    [-- --project [dir]]  # instala o hook "log tudo" em ~/.cursor/hooks.json
 //   npm run cursor:poc:uninstall  [-- --project [dir]]  # remove só os hooks do harness
 //   npm run cursor:poc:report                           # matriz "evento → dispara? (contagem) → campos"
+//   npm run cursor:poc:subagents                        # correlaciona subagentStart/subagentStop (P4)
 //   npm run cursor:poc:usage      [-- --path <dir>]     # lista os candidatos de uso/plano do Cursor (P8)
 //   npm run cursor:poc:decision   [-- --hold N]         # mede o bloqueio do hook de decisão contra um stub local
 //
@@ -48,6 +49,8 @@ export const HARNESS_EVENTS = [
   'afterAgentResponse',
   'afterAgentThought',
   'stop',
+  'subagentStart',
+  'subagentStop',
 ] as const;
 
 const USAGE = `Uso: npm run cursor:poc:<subcomando> -- [opções]
@@ -59,6 +62,8 @@ const USAGE = `Uso: npm run cursor:poc:<subcomando> -- [opções]
   uninstall [--project [dir]]   remove só os hooks do harness, preservando os demais
   report                        lê o diretório de captura e imprime a matriz
                                 "evento → dispara? (contagem) → campos"
+  subagents                     lê o diretório de captura e correlaciona
+                                subagentStart/subagentStop por id (pares, órfãos, sem id)
   usage [--path <dir>]          varre os locais de uso/plano do Cursor (~/.cursor,
                                 ~/.cursor-server, ~/.config/Cursor; ou --path) e lista os
                                 candidatos (JSON: chaves de topo; SQLite: tabelas+contagens),
@@ -83,6 +88,7 @@ export type RunOptions =
   | { command: 'install'; project: string | boolean }
   | { command: 'uninstall'; project: string | boolean }
   | { command: 'report' }
+  | { command: 'subagents' }
   | { command: 'usage'; path?: string }
   | { command: 'decision'; holdS: number; limitS: number };
 
@@ -133,6 +139,10 @@ export function parseArgs(argv: string[]): RunOptions | 'help' {
   if (command === 'report') {
     if (rest.length) throw new FatalError(`opção desconhecida: ${rest[0]}`);
     return { command: 'report' };
+  }
+  if (command === 'subagents') {
+    if (rest.length) throw new FatalError(`opção desconhecida: ${rest[0]}`);
+    return { command: 'subagents' };
   }
   if (command === 'usage') {
     let path: string | undefined;
@@ -257,9 +267,11 @@ export function captureDirOf(env: NodeJS.ProcessEnv, home: string): string {
   return join(home, '.habblaud', 'cursor-poc');
 }
 
-interface CapturedEvent {
+export interface CapturedEvent {
   name: string;
   fields: string[];
+  /** O evento cru (para correlações que precisam de valores, como os ids de subagente). */
+  event: Record<string, unknown>;
 }
 
 /** Lê o `events.jsonl` da captura (linhas inválidas são ignoradas; nunca lança). */
@@ -279,7 +291,7 @@ export function readCapturedEvents(file: string): CapturedEvent[] {
       if (!isObject(rec.event)) continue;
       const event = rec.event;
       const name = typeof event.hook_event_name === 'string' ? event.hook_event_name : typeof event.event === 'string' ? event.event : '(sem nome)';
-      out.push({ name, fields: Object.keys(event).sort() });
+      out.push({ name, fields: Object.keys(event).sort(), event });
     } catch {
       // linha corrompida: ignora
     }
@@ -428,6 +440,83 @@ async function runDecision(opts: { holdS: number; limitS: number }, ctx: RunCont
   }
 }
 
+// ---------------------------------------------------------------- subagents (P4)
+
+/** Um par de eventos de subagente correlacionados pelo id (Start e, quando houver, Stop). */
+export interface SubagentPair {
+  id?: string;
+  parent?: string;
+  start?: CapturedEvent;
+  stop?: CapturedEvent;
+  complete: boolean;
+}
+
+/** Resultado da correlação: pares, órfãos (Stop sem Start) e eventos de subagente sem id. */
+export interface SubagentCorrelation {
+  pairs: SubagentPair[];
+  orphans: CapturedEvent[];
+  uncorrelated: CapturedEvent[];
+  total: number;
+}
+
+const SUBAGENT_EVENTS = new Set(['subagentStart', 'subagentStop']);
+
+/** Id de correlação de um evento de subagente (aceita os aliases conhecidos; `undefined` se não houver). */
+function subagentIdOf(ev: CapturedEvent): string | undefined {
+  for (const key of ['subagent_id', 'subagentId', 'id', 'conversation_id', 'conversationId']) {
+    const v = ev.event[key];
+    if (typeof v === 'string' && v) return v;
+    if (typeof v === 'number') return String(v);
+  }
+  return undefined;
+}
+
+/** Pai do subagente, quando algum dos eventos traz `parent_conversation_id`. */
+function subagentParentOf(...evs: Array<CapturedEvent | undefined>): string | undefined {
+  for (const ev of evs) {
+    if (!ev) continue;
+    const v = ev.event.parent_conversation_id ?? ev.event.parentConversationId;
+    if (typeof v === 'string' && v) return v;
+  }
+  return undefined;
+}
+
+/**
+ * Correlaciona os `subagentStart`/`subagentStop` capturados pelo id: Stop que casa um Start vira
+ * par (`complete`); Stop sem Start vira órfão; evento de subagente sem id vira `uncorrelated`.
+ * Eventos de outros tipos são ignorados. Nunca lança.
+ */
+export function correlateSubagents(events: readonly CapturedEvent[]): SubagentCorrelation {
+  const byId = new Map<string, SubagentPair>();
+  const uncorrelated: CapturedEvent[] = [];
+  let total = 0;
+  for (const ev of events) {
+    if (!SUBAGENT_EVENTS.has(ev.name)) continue;
+    total++;
+    const id = subagentIdOf(ev);
+    if (!id) {
+      uncorrelated.push(ev);
+      continue;
+    }
+    let pair = byId.get(id);
+    if (!pair) byId.set(id, (pair = { id, complete: false }));
+    if (ev.name === 'subagentStart') {
+      if (!pair.start) pair.start = ev;
+    } else if (!pair.stop) {
+      pair.stop = ev;
+    }
+  }
+  const pairs: SubagentPair[] = [];
+  const orphans: CapturedEvent[] = [];
+  for (const pair of byId.values()) {
+    pair.parent = subagentParentOf(pair.start, pair.stop);
+    pair.complete = !!pair.start && !!pair.stop;
+    if (pair.start) pairs.push(pair);
+    else if (pair.stop) orphans.push(pair.stop);
+  }
+  return { pairs, orphans, uncorrelated, total };
+}
+
 // ---------------------------------------------------------------- usage (P8)
 
 /** Um candidato a arquivo de uso/plano encontrado na varredura (só metadados; nunca o conteúdo). */
@@ -559,6 +648,8 @@ export async function run(opts: RunOptions, ctx: RunContext): Promise<number> {
       return runUninstall(ctx, opts.project);
     case 'report':
       return runReport(ctx);
+    case 'subagents':
+      return runSubagents(ctx);
     case 'usage':
       return runUsage(opts, ctx);
     case 'decision':
@@ -634,6 +725,25 @@ function runReport(ctx: RunContext): number {
     return 0;
   }
   for (const line of reportMatrix(events)) ctx.out(line);
+  return 0;
+}
+
+/** Correlaciona os subagentes capturados e imprime pares/órfãos. Sem eventos → "não observado" e 0. */
+function runSubagents(ctx: RunContext): number {
+  const dir = captureDirOf(ctx.env, ctx.home);
+  const report = correlateSubagents(readCapturedEvents(join(dir, 'events.jsonl')));
+  if (!report.total) {
+    ctx.out(`Subagentes: não observado em ${tildify(dir, ctx.home)}.`);
+    ctx.out('Nenhum subagentStart/subagentStop na captura (os hooks podem não disparar no Cursor).');
+    return 0;
+  }
+  ctx.out(`Eventos de subagente: ${report.total} · pares: ${report.pairs.length} · órfãos: ${report.orphans.length} · sem id: ${report.uncorrelated.length}`);
+  for (const p of report.pairs) {
+    const pai = p.parent ? ` · pai: ${p.parent}` : '';
+    ctx.out(`  par ${p.id}  ${p.complete ? 'casado' : 'aguardando stop'}${pai}`);
+  }
+  for (const o of report.orphans) ctx.out(`  órfão ${subagentIdOf(o)}  (stop sem start)`);
+  for (const u of report.uncorrelated) ctx.out(`  sem-correlação  ${u.name}  (sem id)`);
   return 0;
 }
 
