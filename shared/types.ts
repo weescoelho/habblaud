@@ -71,6 +71,18 @@ export type ActivityKind =
   | 'done' // terminou o turno
   | 'other';
 
+/** Resumo de uma edição de arquivo (diff) para o balão/card da atividade. Só contagens: o conteúdo completo fica no terminal. */
+export interface EditDiff {
+  /** Caminho do arquivo editado. */
+  file: string;
+  /** Quantas linhas foram adicionadas. */
+  added: number;
+  /** Quantas linhas foram removidas. */
+  removed: number;
+  /** O diff foi cortado (havia mais linhas do que o limite). */
+  truncated?: boolean;
+}
+
 export interface Activity {
   /** Único por atividade (ex.: uuid da entrada + índice do bloco). */
   id: string;
@@ -81,6 +93,8 @@ export interface Activity {
   text: string;
   /** Detalhe opcional (comando completo, caminho, consulta...), até ~300 caracteres. */
   detail?: string;
+  /** Resumo do diff de uma edição de arquivo (kind 'edit'/'write'), quando o evento o traz. */
+  diff?: EditDiff;
   /** Nome bruto da ferramenta, quando houver. */
   tool?: string;
   /** Epoch ms. */

@@ -251,10 +251,10 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] `EditDiff { file; added; removed; truncated? }` exportado
-- [ ] `Activity.diff?: EditDiff` aditivo e opcional
-- [ ] Gate check passes: `npm run typecheck`
-- [ ] Test count: n/a (camada de tipo; build gate)
+- [x] `EditDiff { file; added; removed; truncated? }` exportado
+- [x] `Activity.diff?: EditDiff` aditivo e opcional
+- [x] Gate check passes: `npm run typecheck`
+- [x] Test count: n/a (camada de tipo; build gate)
 
 **Tests**: none
 **Gate**: build
