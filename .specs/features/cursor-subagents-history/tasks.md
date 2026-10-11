@@ -243,13 +243,13 @@ T8
 
 **Done when**:
 
-- [ ] `list()` devolve a sessão com `account:'cursor'`, `provider:'cursor'`, `sessionId`, `projectDir`, `lastAt`/`firstAt` do mtime, `size` e `open:false` (sem agente aberto)
-- [ ] `title` sai do primeiro prompt via `createCursorTerminalParser`; um transcript sem prompt não inventa título
-- [ ] `resolve('cursor', id)` devolve `path` e um `createParser` novo por chamada; `resolve('cursor','../etc')` → 400; `resolve('outra', id)` → 404; nada lança
-- [ ] um projeto/transcript ilegível dentro da janela é ignorado sem derrubar a listagem
-- [ ] `server/sources/cursor/history.test.ts` cobre os casos acima
-- [ ] Gate check passes: `npx vitest run server/sources/cursor/history.test.ts`
-- [ ] Test count: 10+ casos passam (sem deleções silenciosas)
+- [x] `list()` devolve a sessão com `account:'cursor'`, `provider:'cursor'`, `sessionId`, `projectDir`, `lastAt`/`firstAt` do mtime, `size` e `open:false` (sem agente aberto)
+- [x] `title` sai do primeiro prompt via `createCursorTerminalParser`; um transcript sem prompt não inventa título
+- [x] `resolve('cursor', id)` devolve `path` e um `createParser` novo por chamada; `resolve('cursor','../etc')` → 400; `resolve('outra', id)` → 404; nada lança
+- [x] um projeto/transcript ilegível dentro da janela é ignorado sem derrubar a listagem
+- [x] `server/sources/cursor/history.test.ts` cobre os casos acima
+- [x] Gate check passes: `npx vitest run server/sources/cursor/history.test.ts`
+- [x] Test count: 10+ casos passam (sem deleções silenciosas)
 
 **Tests**: unit
 **Gate**: quick
