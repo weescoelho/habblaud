@@ -1,7 +1,8 @@
 // Pedidos de aprovação do Cursor no registro de permissões: o agente pela conversa (`session_id`/`conversation_id`),
-// título e resumo pela tradução das ferramentas do Cursor (`Shell`→Bash, `MCP:<tool>`→`mcp__<tool>`), sem sugestões
-// nem perguntas, recusa só com motivo (interromper e "sempre permitir" = unsupported), sem a busca da resposta no
-// transcript e com a mesma expiração dos outros provedores. Dados sintéticos.
+// título e resumo pela tradução das ferramentas do Cursor (`Shell`→Bash, `MCP:<tool>`→`mcp__<tool>`), sem perguntas,
+// recusa só com motivo (interromper = unsupported; "sempre permitir" é aceito quando o hook sugere a regra em
+// `suggest_rule`), sem a busca da resposta no transcript e com a mesma expiração dos outros provedores. Dados
+// sintéticos.
 import { describe, expect, it } from 'vitest';
 import { setQuiet } from '../log';
 import { NameStore } from '../model/names';
@@ -85,11 +86,12 @@ describe('PermissionRegistry: pedidos do Cursor', () => {
     expect(registry.register(cursorInput({ session_id: 'conv-outra' }))).toEqual({ skip: 'unknown-session' });
   });
 
-  it('decisões: allow e deny com motivo valem; interromper e "sempre permitir" = unsupported; answer = invalid-answer; terminal libera', async () => {
+  it('decisões: allow e deny com motivo valem; interromper = unsupported; suggestion fora do pedido = invalid; answer = invalid-answer; terminal libera', async () => {
     const { registry } = setup();
     const id = registered(registry.register(cursorInput()));
     expect(registry.decide(id, { behavior: 'deny', message: 'não', interrupt: true })).toBe('unsupported');
-    expect(registry.decide(id, { behavior: 'allow', suggestion: 0 })).toBe('unsupported');
+    // Sem `suggest_rule` no pedido não há sugestão: pedir "sempre permitir" é inválido (não é mais unsupported).
+    expect(registry.decide(id, { behavior: 'allow', suggestion: 0 })).toBe('invalid');
     expect(registry.decide(id, { behavior: 'answer', answers: [{ question: 0, options: [0] }] })).toBe('invalid-answer');
     const w = registry.wait(id, 10_000)!;
     expect(registry.decide(id, { behavior: 'deny', message: 'use pnpm' })).toBe('ok');
