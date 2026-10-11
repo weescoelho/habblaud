@@ -178,11 +178,35 @@ describe('fonte do Cursor: presença por hooks', () => {
     expect(ctx.agent()?.status).toBe('working');
   });
 
-  it('transcriptPathOf e terminalParser devolvem undefined (MVP sem transcript)', () => {
+  it('sem transcript_path: transcriptPathOf fica undefined, mas o parser existe por agente conhecido', () => {
     const ctx = setup();
     ctx.hook(ev('sessionStart'));
     expect(ctx.source.transcriptPathOf('cursor:c1')).toBeUndefined();
-    expect(ctx.source.terminalParser('cursor:c1')).toBeUndefined();
+    expect(ctx.source.terminalParser('cursor:c1')).toBeDefined();
+    // Um evento com transcript_path nulo (ex.: beforeReadFile) não inventa caminho.
+    expect(ctx.hook(ev('beforeReadFile', { transcript_path: null }))).toBe(true);
+    expect(ctx.source.transcriptPathOf('cursor:c1')).toBeUndefined();
+  });
+
+  it('com transcript_path: expõe o caminho e um parser novo por chamada; evento sem caminho não limpa', () => {
+    const ctx = setup();
+    ctx.hook(ev('sessionStart', { transcript_path: '/tmp/cursor.jsonl' }));
+    expect(ctx.source.transcriptPathOf('cursor:c1')).toBe('/tmp/cursor.jsonl');
+    const p1 = ctx.source.terminalParser('cursor:c1');
+    const p2 = ctx.source.terminalParser('cursor:c1');
+    expect(p1).toBeDefined();
+    expect(p2).toBeDefined();
+    expect(p1).not.toBe(p2); // parser NOVO por leitura (guarda estado)
+    // Evento posterior sem transcript_path (ou nulo) NÃO limpa o caminho já guardado.
+    ctx.hook(ev('stop'));
+    ctx.hook(ev('beforeReadFile', { transcript_path: null }));
+    expect(ctx.source.transcriptPathOf('cursor:c1')).toBe('/tmp/cursor.jsonl');
+  });
+
+  it('agente desconhecido: transcriptPathOf e terminalParser devolvem undefined', () => {
+    const ctx = setup();
+    expect(ctx.source.transcriptPathOf('cursor:ninguem')).toBeUndefined();
+    expect(ctx.source.terminalParser('cursor:ninguem')).toBeUndefined();
   });
 
   it('conta única registrada: id cursor, nome Cursor, short/color sem colidir; sources() reflete as sessões', () => {

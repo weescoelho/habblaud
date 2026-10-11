@@ -117,12 +117,12 @@ T6
 
 **Done when**:
 
-- [ ] um evento com `transcript_path` não vazio faz `transcriptPathOf(agentId)` devolvê-lo
-- [ ] um evento posterior sem `transcript_path` (ou com `null`) **não** limpa o caminho já guardado; sem caminho, `transcriptPathOf` segue `undefined`
-- [ ] `terminalParser(agentId)` devolve um parser novo para um agente conhecido e `undefined` para um desconhecido
-- [ ] `server/sources/cursor/source.test.ts` substitui o caso "MVP sem transcript" por: sem caminho → `undefined`; com caminho → definido (e o parser definido)
-- [ ] Gate check passes: `npx vitest run server/sources/cursor/source.test.ts`
-- [ ] Test count: 12+ casos passam (sem deleções silenciosas)
+- [x] um evento com `transcript_path` não vazio faz `transcriptPathOf(agentId)` devolvê-lo
+- [x] um evento posterior sem `transcript_path` (ou com `null`) **não** limpa o caminho já guardado; sem caminho, `transcriptPathOf` segue `undefined`
+- [x] `terminalParser(agentId)` devolve um parser novo para um agente conhecido e `undefined` para um desconhecido
+- [x] `server/sources/cursor/source.test.ts` substitui o caso "MVP sem transcript" por: sem caminho → `undefined`; com caminho → definido (e o parser definido)
+- [x] Gate check passes: `npx vitest run server/sources/cursor/source.test.ts`
+- [x] Test count: 12+ casos passam (sem deleções silenciosas)
 
 **Tests**: unit
 **Gate**: quick

@@ -4,7 +4,8 @@
 //
 // Presença: um tracker por conversation_id. Cada evento atualiza lastHookAt; um relógio de ~1 s (poll) remove o
 // agente quando now - lastHookAt > STALE_PRESENCE_MS (o Cursor pode fechar sem sessionEnd, num crash). Um evento
-// novo reabre a sessão. Sem transcript no MVP: transcriptPathOf/terminalParser devolvem undefined.
+// novo reabre a sessão. O `transcript_path` que os hooks trazem é guardado por conversa (só quando vem não
+// vazio; nunca limpo por um evento sem ele) e vira o terminal via transcriptPathOf/terminalParser.
 //
 // Status: aplicado por bordas (decide), a informação mais nova vence (statusAt): um evento atrasado não regride.
 import { join, resolve } from 'node:path';
@@ -17,6 +18,7 @@ import type { AgentSource } from '../source';
 import type { TerminalParser } from '../terminal';
 import type { CursorLive } from './live';
 import { describeCursorTool, parseCursorEvent, statusBorder, type CursorEvent } from './rollout';
+import { createCursorTerminalParser } from './terminal';
 
 /** Sem evento de hook por este tempo, a sessão é dada como encerrada (crash sem `sessionEnd`). */
 export const STALE_PRESENCE_MS = 5 * 60_000;
@@ -69,6 +71,8 @@ interface CursorTracker {
   lastHookAt: number;
   startedAt: number;
   inOffice: boolean;
+  /** Arquivo do transcript da conversa (só gravado quando um evento traz caminho não vazio; nunca limpo). */
+  transcriptPath?: string;
 }
 
 export class CursorSource implements AgentSource, CursorLive {
@@ -118,14 +122,14 @@ export class CursorSource implements AgentSource, CursorLive {
     return [{ label: this.accountId, provider: 'cursor', path: this.dir, sessions, ok: true }];
   }
 
-  /** Sem transcript no MVP (P0 ainda não confirmou o schema). */
-  transcriptPathOf(_agentId: string): string | undefined {
-    return undefined;
+  /** Arquivo do transcript da conversa, quando um evento de hook já trouxe um caminho. */
+  transcriptPathOf(agentId: string): string | undefined {
+    return this.trackers.get(agentId)?.transcriptPath;
   }
 
-  /** Sem terminal no MVP (sem transcript). */
-  terminalParser(_agentId: string): TerminalParser | undefined {
-    return undefined;
+  /** Terminal do Cursor: um parser novo por leitura, sempre que o agente é conhecido. */
+  terminalParser(agentId: string): TerminalParser | undefined {
+    return this.trackers.has(agentId) ? createCursorTerminalParser() : undefined;
   }
 
   /** Relógio de presença: remove os trackers sem evento novo por `STALE_PRESENCE_MS`. */
@@ -170,6 +174,9 @@ export class CursorSource implements AgentSource, CursorLive {
       this.trackers.set(key, t);
     }
     if (!t.cwd) t.cwd = event.workspaceRoot ?? event.cwd;
+    // O caminho do transcript é estável por conversa: grava quando vem não vazio e nunca limpa (eventos
+    // parciais como beforeReadFile trazem `null`, que não pode apagar um caminho bom).
+    if (event.transcriptPath) t.transcriptPath = event.transcriptPath;
     this.reconcile(t);
     if (!t.inOffice) return true;
 
