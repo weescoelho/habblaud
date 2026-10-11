@@ -10,13 +10,21 @@
 - **Date**: 2026-10-10
 - **Status**: active
 
+### AD-002
+- **Decision**: O "sempre permitir" do Cursor é emulado por uma **política local** (`~/.habblaud/cursor-hook.json` → `rules`): o **hook** deriva o padrão (prefixo ancorado) e o envia no pedido (`suggest_rule`); o **servidor** expõe como sugestão, valida e **grava** a regra; o **hook**, na próxima vez, aplica a regra e decide sem contatar o Habblaud. A redução do volume é feita por `decisionEvents` (padrão: só `beforeShellExecution`/`beforeMCPExecution` viram decisão; o resto segue observação).
+- **Reason**: o Cursor não expõe `updatedPermissions` e o hook dele só expressa `allow`/`deny`; a derivação no hook mantém uma **fonte única** do padrão (o servidor grava opaco), e o arquivo já era lido pelo hook.
+- **Trade-off**: arquivo compartilhado (servidor grava × hook lê) exige escrita atômica (temp+rename) e tolerância a JSON malformado; o padrão derivado é de prefixo (previsível, não coringa); falha ao gravar não desfaz a aprovação do momento.
+- **Scope**: `mod/habblaud-cursor/{policy,hook}.mjs`, `server/permissions/{registry,cursor-rules}.ts`, `server/index.ts`, `client/src/ui/permission.ts`, `scripts/cursor-install.ts`.
+- **Date**: 2026-10-11
+- **Status**: active
+
 ## Handoff
 
-- **Feature**: `cursor-poc-p4-p8` (`.specs/features/cursor-poc-p4-p8/`) — POCs P4–P8 (uso/plano, subagentes, CLI `stream-json`, injeção no `stop`, histórico + efeitos `git`/`gh`)
-- **Phase / Task**: Execute concluído — T1–T8 ✅ (a feature anterior `cursor-poc`/P0–P3 ficou com **GO**). Validação independente **pendente**.
-- **Completed**: 8/8 tasks commitadas (T1 `33de82e` … T8 no repo-pai `f0fcf12`); harness entregue: subcomandos `usage`/`subagents`/`cli`/`followup`/`history` + probe `mod/habblaud-cursor/followup-hook.mjs`; runbook `docs/analise/10-runbook-poc-cursor-p4-p8.md` (fork); **gate build verde** (`typecheck` + `vitest` **1265 passed / 2 skipped** + `build`). Evidência real (export do usuário): **P8** ❌ provável (sem fonte de primeira parte → ocultar cartão), **P7** sucesso parcial (2 sessões: 25 e 9 turnos), **P4** "não observado" na amostra antiga (método corrigido — hooks de subagente agora instalados).
-- **In-progress** (file:line): nada — working tree do fork limpo (o repo-pai tem o ponteiro do submodule por commitar).
-- **Next step**: rodar o **Verifier independente** (autor ≠ verificador) → escrever `.specs/features/cursor-poc-p4-p8/validation.md`, marcar os ACs como `Verified` e rodar `validate_state.py cursor-poc-p4-p8`; depois, na máquina com Cursor, executar o runbook `10` para fechar **P4** (re-teste), **P5** (stream real) e **P6** (injeção real). PR upstream só com go-ahead explícito.
-- **Blockers**: validação **ao vivo** de P4/P5/P6 pendente (exige a máquina do usuário). Pendência antiga: P2 ≥30 s por medir (não bloqueia a Fase 1).
-- **Uncommitted files**: none no fork; no repo-pai resta o **ponteiro do submodule** (`projects/habblaud-main`) e o `HANDOFF.md` (untracked).
+- **Feature**: `cursor-permissoes` (`.specs/features/cursor-permissoes/`) — **fluxo de permissões do Cursor sem travar**: decisão só para Shell/MCP (corta `preToolUse`/`beforeReadFile`), regras locais `allow`/`deny` aplicadas pelo hook, "permitir sempre" persistido pelo servidor e camada base (auto-run/allowlist do Cursor) documentada.
+- **Phase / Task**: **Tasks** concluído (planejamento) — `spec.md` (19 ACs `CPERM-01..19`, 5 stories P1–P3), `context.md`, `design.md` e `tasks.md` (T1–T9 em 4 fases; `validate_spec.py` 0/0 e `validate_tasks.py` 0 erros). Aguardando aprovação para o **Execute**.
+- **Completed** (desta feature): `spec.md` + `context.md` + `design.md` + `tasks.md`; `AD-002` registrada. **Rodada anterior**: `cursor-poc` P0–P3 → **GO** (29/29 ACs); `cursor-poc-p4-p8` implementada e validada de forma independente (`validation.md`, commit `8bcce47`; gate `typecheck` + `vitest` 1265 passed / 2 skipped + `build`).
+- **In-progress** (file:line): nada — só os artefatos de planejamento desta feature, por commitar.
+- **Next step**: aprovar o plano → **Execute** (T1–T9; P1 = T1/T2 já corta o travamento; P2 = T3–T7; docs = T8/T9). Depois, na máquina com Cursor, o runbook `10` fecha a validação **ao vivo** da rodada anterior (P4 re-teste, P5 stream real, P6 injeção real) e a pendência da P2 (≥30 s).
+- **Blockers**: validação **ao vivo** P4/P5/P6 e P2 ≥30 s (exigem a máquina do usuário); fail-fast sem viewer ficou fora desta feature (assumption na spec).
+- **Uncommitted files**: `.specs/features/cursor-permissoes/{spec,context,design,tasks}.md` (novos) e `.specs/STATE.md` (`AD-002` + este Handoff).
 - **Branch**: `cursor-poc` (enviado para `origin/cursor-poc`). Remotes: `origin` = fork `weescoelho/habblaud`; `upstream` = `marmottajr/habblaud`.
