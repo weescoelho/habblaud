@@ -10,7 +10,7 @@ Implement these tasks with the `tlc-spec-driven` skill: **activate it by name an
 
 **Design**: `.specs/features/cursor-poc-p4-p8/design.md`
 **Spec**: `.specs/features/cursor-poc-p4-p8/spec.md`
-**Status**: Not started
+**Status**: Em execução (T1 ✅; T2–T8 pendentes)
 
 ---
 
@@ -97,15 +97,15 @@ T7 → T8
 
 **Done when**:
 
-- [ ] `scanUsage(root)`/`describeUsageFile(path)` (exportadas) listam candidatos e devolvem, para JSON, as chaves de topo; para SQLite, os nomes de tabela e as contagens
-- [ ] `usage --path <dir>` sobre um `HOME`/diretório temporário lista um `usage.json` e um `state.vscdb` sintético; sem candidatos → mensagem explicativa e saída `0`; arquivo ilegível não lança
-- [ ] `server/test/cursor-poc.test.ts` cobre: listagem+chaves JSON; tabelas SQLite; diretório inexistente (saída 0); arquivo ilegível
-- [ ] Gate check passes: `npx vitest run server/test/cursor-poc.test.ts`
-- [ ] Test count: 4+ casos passam (sem deleções silenciosas)
+- [x] `scanUsage(root)`/`describeUsageFile(path)` (exportadas) listam candidatos e devolvem, para JSON, as chaves de topo; para SQLite, os nomes de tabela e as contagens
+- [x] `usage --path <dir>` sobre um `HOME`/diretório temporário lista um `usage.json` e um `state.vscdb` sintético; sem candidatos → mensagem explicativa e saída `0`; arquivo ilegível não lança
+- [x] `server/test/cursor-poc.test.ts` cobre: listagem+chaves JSON; tabelas SQLite; diretório inexistente (saída 0); arquivo ilegível
+- [x] Gate check passes: `npx vitest run server/test/cursor-poc.test.ts`
+- [x] Test count: 4+ casos passam (sem deleções silenciosas)
 
 **Tests**: unit
 **Gate**: quick
-**Status**: ⬜ Pending
+**Status**: ✅ Complete
 
 **Commit**: `feat(cursor): subcomando usage do harness (p8)`
 

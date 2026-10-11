@@ -4,19 +4,20 @@
 //   npm run cursor:poc:install    [-- --project [dir]]  # instala o hook "log tudo" em ~/.cursor/hooks.json
 //   npm run cursor:poc:uninstall  [-- --project [dir]]  # remove só os hooks do harness
 //   npm run cursor:poc:report                           # matriz "evento → dispara? (contagem) → campos"
+//   npm run cursor:poc:usage      [-- --path <dir>]     # lista os candidatos de uso/plano do Cursor (P8)
 //   npm run cursor:poc:decision   [-- --hold N]         # mede o bloqueio do hook de decisão contra um stub local
 //
 // O transcript do Cursor ainda não tem schema confirmado (lacuna C1): este harness só OBSERVA. Tudo é
 // feito pelo próprio Node (`node:fs`/`node:sqlite`), sem binário externo, e nunca lança para formato
 // desconhecido — um arquivo "opaco" é reportado como tal.
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { homedir, tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { inspectTranscript, type TranscriptInspection } from '../server/sources/cursor/transcript';
+import { classifyTranscript, inspectTranscript, type TranscriptInspection } from '../server/sources/cursor/transcript';
 import { quotePath, readSettings, tildify, writeSettings, type Settings } from './statusline-install';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -58,6 +59,10 @@ const USAGE = `Uso: npm run cursor:poc:<subcomando> -- [opções]
   uninstall [--project [dir]]   remove só os hooks do harness, preservando os demais
   report                        lê o diretório de captura e imprime a matriz
                                 "evento → dispara? (contagem) → campos"
+  usage [--path <dir>]          varre os locais de uso/plano do Cursor (~/.cursor,
+                                ~/.cursor-server, ~/.config/Cursor; ou --path) e lista os
+                                candidatos (JSON: chaves de topo; SQLite: tabelas+contagens),
+                                sem rede e sem imprimir valores
   decision [--hold <N>] [--limit <S>]
                                 sobe um stub local, roda o hook de decisão com um
                                 beforeShellExecution sintético e mede o bloqueio;
@@ -78,6 +83,7 @@ export type RunOptions =
   | { command: 'install'; project: string | boolean }
   | { command: 'uninstall'; project: string | boolean }
   | { command: 'report' }
+  | { command: 'usage'; path?: string }
   | { command: 'decision'; holdS: number; limitS: number };
 
 class FatalError extends Error {}
@@ -127,6 +133,19 @@ export function parseArgs(argv: string[]): RunOptions | 'help' {
   if (command === 'report') {
     if (rest.length) throw new FatalError(`opção desconhecida: ${rest[0]}`);
     return { command: 'report' };
+  }
+  if (command === 'usage') {
+    let path: string | undefined;
+    for (let i = 0; i < rest.length; i++) {
+      const a = rest[i];
+      if (a === '--path') {
+        path = rest[++i];
+        if (!path) throw new FatalError('--path precisa de um diretório.');
+      } else {
+        throw new FatalError(`opção desconhecida: ${a}`);
+      }
+    }
+    return { command: 'usage', path };
   }
   if (command === 'decision') {
     let holdS = DEFAULT_HOLD_S;
@@ -409,6 +428,109 @@ async function runDecision(opts: { holdS: number; limitS: number }, ctx: RunCont
   }
 }
 
+// ---------------------------------------------------------------- usage (P8)
+
+/** Um candidato a arquivo de uso/plano encontrado na varredura (só metadados; nunca o conteúdo). */
+export interface UsageHit {
+  path: string;
+  kind: 'json' | 'sqlite' | 'other';
+  size: number;
+  mtimeMs: number;
+}
+
+/** Pastas que a varredura de uso IGNORA (não são estado de uso/plano, e `projects/` é o grosso). */
+const IGNORED_USAGE_DIRS = new Set(['projects', 'plugins', 'extensions', 'node_modules']);
+
+/** Nome de pasta ignorada: a lista fixa mais os diretórios de skills (`skills*`). */
+function ignoredUsageDir(name: string): boolean {
+  const n = name.toLowerCase();
+  return IGNORED_USAGE_DIRS.has(n) || n.startsWith('skills');
+}
+
+/** Tokens que nomeiam um candidato a uso/plano (casa no NOME do arquivo, sem sensibilidade a caixa). */
+const USAGE_NAME_RE = /usage|plan|limit|quota|billing|credit|ai-tracking|statsig|agent-cli-state|state\.vscdb/i;
+
+/** Raízes candidatas de uso/plano para um `HOME` (o `--path` substitui esta lista). */
+export function usageRoots(home: string): string[] {
+  return [join(home, '.cursor'), join(home, '.cursor-server'), join(home, '.config', 'Cursor')];
+}
+
+/** Classifica um candidato por formato: SQLite pelo magic, JSON/JSONL pelo conteúdo, senão `other`. */
+function usageKindOf(path: string): UsageHit['kind'] {
+  const format = classifyTranscript(path);
+  if (format === 'sqlite') return 'sqlite';
+  if (format === 'json' || format === 'jsonl') return 'json';
+  return 'other';
+}
+
+/** Acrescenta um candidato com metadados, se o `stat` funcionar (nunca lança). */
+function pushUsageHit(out: UsageHit[], path: string): void {
+  let st;
+  try {
+    st = statSync(path);
+  } catch {
+    return;
+  }
+  out.push({ path, kind: usageKindOf(path), size: st.size, mtimeMs: st.mtimeMs });
+}
+
+/**
+ * Varre `root` (diretório, ou o próprio arquivo) e devolve os candidatos a uso/plano, pulando as
+ * pastas de `IGNORED_USAGE_DIRS`/skills. Nunca lança: pasta ilegível é ignorada e arquivo ilegível
+ * ainda entra (metadados). Ordenado por caminho para saída estável.
+ */
+export function scanUsage(root: string): UsageHit[] {
+  const out: UsageHit[] = [];
+  let st;
+  try {
+    st = statSync(root);
+  } catch {
+    return out;
+  }
+  if (st.isFile()) {
+    if (USAGE_NAME_RE.test(basename(root))) pushUsageHit(out, root);
+    return out;
+  }
+  const walk = (dir: string): void => {
+    try {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (!ignoredUsageDir(entry.name)) walk(full);
+        } else if (entry.isFile()) {
+          if (USAGE_NAME_RE.test(entry.name)) pushUsageHit(out, full);
+        }
+      }
+    } catch {
+      // pasta ilegível: ignora
+    }
+  };
+  walk(root);
+  return out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+}
+
+/**
+ * Descreve o conteúdo de um candidato sem imprimir valores: JSON/JSONL → chaves de topo (e a
+ * contagem); SQLite → nomes de tabela (e a contagem); senão → só uma nota de formato. Nunca lança.
+ */
+export function describeUsageFile(path: string): string[] {
+  const info = inspectTranscript(path);
+  if (info.format === 'json' || info.format === 'jsonl') {
+    if (!info.keys.length) return ['JSON sem chaves de topo.'];
+    return ['Chaves JSON:', ...info.keys.map((k) => `  ${k.key}  ${k.count}`)];
+  }
+  if (info.format === 'sqlite') {
+    if (!info.tables.length) return ['SQLite sem tabelas.'];
+    return ['Tabelas:', ...info.tables.map((t) => `  ${t.name}  ${t.count}`)];
+  }
+  return ['Formato não reconhecido (só metadados).'];
+}
+
+/** Linha de metadados de um candidato: caminho (com `~`), tamanho, mtime ISO e tipo. */
+function formatUsageHit(hit: UsageHit, home: string): string {
+  return `${tildify(hit.path, home)}  ${hit.size} B  ${new Date(hit.mtimeMs).toISOString()}  [${hit.kind}]`;
+}
+
 // ---------------------------------------------------------------- execução
 
 export interface RunContext {
@@ -437,6 +559,8 @@ export async function run(opts: RunOptions, ctx: RunContext): Promise<number> {
       return runUninstall(ctx, opts.project);
     case 'report':
       return runReport(ctx);
+    case 'usage':
+      return runUsage(opts, ctx);
     case 'decision':
       return runDecision(opts, ctx);
   }
@@ -510,6 +634,23 @@ function runReport(ctx: RunContext): number {
     return 0;
   }
   for (const line of reportMatrix(events)) ctx.out(line);
+  return 0;
+}
+
+/** Varre as raízes (ou `--path`) e imprime os candidatos de uso/plano. Sem candidatos → mensagem e 0. */
+function runUsage(opts: { path?: string }, ctx: RunContext): number {
+  const roots = opts.path ? [resolve(opts.path)] : usageRoots(ctx.home);
+  const hits = roots.flatMap((root) => scanUsage(root));
+  if (!hits.length) {
+    const where = roots.map((r) => tildify(r, ctx.home)).join(', ');
+    ctx.out(`Nenhum arquivo candidato de uso/plano em ${where}.`);
+    ctx.out('O Cursor provavelmente não grava limites localmente (o cartão de uso ficaria vazio).');
+    return 0;
+  }
+  for (const hit of hits) {
+    ctx.out(formatUsageHit(hit, ctx.home));
+    for (const line of describeUsageFile(hit.path)) ctx.out(`  ${line}`);
+  }
   return 0;
 }
 

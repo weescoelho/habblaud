@@ -3,11 +3,11 @@
 // classificação + chaves/contagens (json/jsonl), tabelas+contagens (SQLite), o caminho inexistente e o
 // `decision` (bloqueio do hook de decisão contra um stub local que segura N s).
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { tempDir } from './fixtures';
+import { HAS_POSIX_MODES, tempDir } from './fixtures';
 
 const SCRIPT = resolve(__dirname, '../../scripts/cursor-poc.ts');
 const HOOK = resolve(__dirname, '../../mod/habblaud-cursor/poc-hook.mjs');
@@ -42,9 +42,8 @@ function write(name: string, content: string): string {
   return p;
 }
 
-/** SQLite sintético com duas tabelas e contagens conhecidas (sem binário externo). */
-function sqlite(name: string): string {
-  const p = join(tmp.dir, name);
+/** Cria um SQLite sintético (duas tabelas, contagens conhecidas) no caminho dado (sem binário externo). */
+function makeSqlite(p: string): string {
   const db = new DatabaseSync(p);
   try {
     db.exec('CREATE TABLE messages(id INTEGER PRIMARY KEY, role TEXT, content TEXT)');
@@ -58,6 +57,11 @@ function sqlite(name: string): string {
     db.close();
   }
   return p;
+}
+
+/** SQLite sintético dentro do diretório temporário do teste. */
+function sqlite(name: string): string {
+  return makeSqlite(join(tmp.dir, name));
 }
 
 describe('cursor-poc.ts transcript', () => {
@@ -324,5 +328,86 @@ describe('cursor-poc.ts decision (bloqueio do hook de decisão)', () => {
     expect(r.stdout).toContain('decision');
     expect(r.stdout).toContain('--hold');
     expect(r.stdout).toContain('--limit');
+  });
+});
+
+describe('cursor-poc.ts usage (P8)', () => {
+  it('--path <dir>: lista os candidatos (usage.json e state.vscdb) com tamanho e mtime', () => {
+    const root = join(tmp.dir, 'uso');
+    mkdirSync(root, { recursive: true });
+    writeFileSync(join(root, 'usage.json'), JSON.stringify({ plan: 'pro' }));
+    makeSqlite(join(root, 'state.vscdb'));
+    const r = cli(['usage', '--path', root]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('usage.json');
+    expect(r.stdout).toContain('state.vscdb');
+    expect(r.stdout).toContain('[json]');
+    expect(r.stdout).toContain('[sqlite]');
+    expect(r.stdout).toMatch(/\d+ B {2}\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d/); // tamanho + mtime ISO
+  });
+
+  it('JSON: reporta só as chaves de topo e nunca os valores', () => {
+    const root = join(tmp.dir, 'cfg');
+    mkdirSync(root, { recursive: true });
+    writeFileSync(join(root, 'usage.json'), JSON.stringify({ plan: 'segredo-xyz', limits: { usados: 1 }, credit: 42 }));
+    const r = cli(['usage', '--path', root]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('Chaves JSON:');
+    expect(r.stdout).toMatch(/plan\s+1/);
+    expect(r.stdout).toMatch(/limits\s+1/);
+    expect(r.stdout).toMatch(/credit\s+1/);
+    expect(r.stdout).not.toContain('segredo-xyz');
+  });
+
+  it('SQLite: reporta as tabelas e as contagens', () => {
+    const root = join(tmp.dir, 'db');
+    mkdirSync(root, { recursive: true });
+    makeSqlite(join(root, 'state.vscdb'));
+    const r = cli(['usage', '--path', root]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('Tabelas:');
+    expect(r.stdout).toMatch(/messages\s+3/);
+    expect(r.stdout).toMatch(/stats\s+1/);
+  });
+
+  it('sem --path: varre as raízes do HOME falso (~/.cursor)', () => {
+    const home = join(tmp.dir, 'home');
+    mkdirSync(join(home, '.cursor'), { recursive: true });
+    writeFileSync(join(home, '.cursor', 'agent-cli-state.json'), JSON.stringify({ ativo: true }));
+    const r = cli(['usage'], { HOME: home });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('agent-cli-state.json');
+  });
+
+  it('ignora projects/ (um usage.json lá dentro não é listado)', () => {
+    const root = join(tmp.dir, 'ign');
+    mkdirSync(join(root, 'projects', 'p1'), { recursive: true });
+    writeFileSync(join(root, 'projects', 'p1', 'usage.json'), JSON.stringify({ escondido: 1 }));
+    writeFileSync(join(root, 'usage.json'), JSON.stringify({ visivel: 1 }));
+    const r = cli(['usage', '--path', root]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain(join('ign', 'usage.json'));
+    expect(r.stdout).not.toContain('projects');
+  });
+
+  it('diretório inexistente: mensagem explicativa e código 0', () => {
+    const r = cli(['usage', '--path', join(tmp.dir, 'nao-existe')]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/nenhum arquivo candidato/i);
+  });
+
+  it.skipIf(!HAS_POSIX_MODES)('arquivo sem permissão de leitura não lança (sai 0)', () => {
+    const root = join(tmp.dir, 'opaco');
+    mkdirSync(root, { recursive: true });
+    const file = join(root, 'usage.json');
+    writeFileSync(file, JSON.stringify({ plan: 'x' }));
+    chmodSync(file, 0o000);
+    try {
+      const r = cli(['usage', '--path', root]);
+      expect(r.status).toBe(0);
+      expect(r.stdout).toContain('usage.json');
+    } finally {
+      chmodSync(file, 0o644);
+    }
   });
 });

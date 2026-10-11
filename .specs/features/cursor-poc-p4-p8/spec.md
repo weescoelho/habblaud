@@ -200,10 +200,10 @@ Each requirement gets a unique ID for tracking across design, tasks, and validat
 
 | Requirement ID | Story       | Phase  | Status  |
 | -------------- | ----------- | ------ | ------- |
-| CP48-01        | S1: Uso     | Design | Pending |
-| CP48-02        | S1: Uso     | Design | Pending |
-| CP48-03        | S1: Uso     | Design | Pending |
-| CP48-04        | S1: Uso     | Design | Pending |
+| CP48-01        | S1: Uso     | Design | Implementing |
+| CP48-02        | S1: Uso     | Design | Implementing |
+| CP48-03        | S1: Uso     | Design | Implementing |
+| CP48-04        | S1: Uso     | Design | Implementing |
 | CP48-05        | S2: Subagentes | Design | Pending |
 | CP48-06        | S2: Subagentes | Design | Pending |
 | CP48-07        | S2: Subagentes | Design | Pending |

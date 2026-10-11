@@ -48,6 +48,7 @@
     "cursor:poc:report": "tsx scripts/cursor-poc.ts report",
     "cursor:poc:transcript": "tsx scripts/cursor-poc.ts transcript",
     "cursor:poc:decision": "tsx scripts/cursor-poc.ts decision",
+    "cursor:poc:usage": "tsx scripts/cursor-poc.ts usage",
     "release": "tsx scripts/release.ts"
   },
   "devDependencies": {
