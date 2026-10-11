@@ -242,9 +242,9 @@ T6
 
 **Done when**:
 
-- [ ] §6.8 ganha a nota da Fase 3 apontando para `.specs/features/cursor-transcript/`
-- [ ] o Handoff de `.specs/STATE.md` resume a feature e registra a ausência de checklist/resultado como resultado
-- [ ] Gate check passes: `npm run typecheck && npm test && npm run build`
+- [x] §6.8 ganha a nota da Fase 3 apontando para `.specs/features/cursor-transcript/`
+- [x] o Handoff de `.specs/STATE.md` resume a feature e registra a ausência de checklist/resultado como resultado
+- [x] Gate check passes: `npm run typecheck && npm test && npm run build`
 
 **Tests**: none
 **Gate**: build

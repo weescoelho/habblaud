@@ -20,11 +20,12 @@
 
 ## Handoff
 
-- **Feature**: `cursor-permissoes` (`.specs/features/cursor-permissoes/`) — **fluxo de permissões do Cursor sem travar**: decisão só para Shell/MCP (corta `preToolUse`/`beforeReadFile`), regras locais `allow`/`deny` aplicadas pelo hook, "permitir sempre" persistido pelo servidor e camada base (auto-run/allowlist do Cursor) documentada.
-- **Phase / Task**: **Tasks** concluído (planejamento) — `spec.md` (19 ACs `CPERM-01..19`, 5 stories P1–P3), `context.md`, `design.md` e `tasks.md` (T1–T9 em 4 fases; `validate_spec.py` 0/0 e `validate_tasks.py` 0 erros). Aguardando aprovação para o **Execute**.
-- **Completed** (desta feature): `spec.md` + `context.md` + `design.md` + `tasks.md`; `AD-002` registrada. **Rodada anterior**: `cursor-poc` P0–P3 → **GO** (29/29 ACs); `cursor-poc-p4-p8` implementada e validada de forma independente (`validation.md`, commit `8bcce47`; gate `typecheck` + `vitest` 1265 passed / 2 skipped + `build`).
-- **In-progress** (file:line): nada — só os artefatos de planejamento desta feature, por commitar.
-- **Next step**: aprovar o plano → **Execute** (T1–T9; P1 = T1/T2 já corta o travamento; P2 = T3–T7; docs = T8/T9). Depois, na máquina com Cursor, o runbook `10` fecha a validação **ao vivo** da rodada anterior (P4 re-teste, P5 stream real, P6 injeção real) e a pendência da P2 (≥30 s).
-- **Blockers**: validação **ao vivo** P4/P5/P6 e P2 ≥30 s (exigem a máquina do usuário); fail-fast sem viewer ficou fora desta feature (assumption na spec).
-- **Uncommitted files**: `.specs/features/cursor-permissoes/{spec,context,design,tasks}.md` (novos) e `.specs/STATE.md` (`AD-002` + este Handoff).
+- **Feature**: `cursor-transcript` (`.specs/features/cursor-transcript/`) — **Fase 3 do Cursor**: terminal da conversa a partir do `transcript_path`, tokens acumulados nos eventos de hook (`AgentStats` → Office) e atividades ricas das ferramentas próprias do Cursor.
+- **Phase / Task**: **Execute** concluído (T1–T6; `validate_spec.py` 0/0 e `validate_tasks.py` 0 erros). Validação independente (Verifier) **não** executada nesta rodada (autor = implementador; fora do escopo pedido).
+- **Completed** (desta feature): T1 `server/sources/cursor/terminal.ts` (`createCursorTerminalParser`) + teste; T2 `transcript_path`/`terminalParser` na `CursorSource`; T3 tokens no `CursorEvent` (`rollout.ts`); T4 tokens acumulados no Office; T5 traduções ricas de `GetDynamicTools`/`AskQuestion`/`UpdateCurrentStep` e delegate `Task`; T6 roteiro + este Handoff. Gate `typecheck` + `vitest` (1335 passed / 2 skipped) + `build`.
+- **Resultados documentados**: o transcript observado **não** traz `tool_result` (nenhuma entrada `result`) nem checklist (`UpdateCurrentStep` é passo, não lista → nenhum `TaskItem` derivado).
+- **In-progress** (file:line): nada.
+- **Next step**: rodar o Verifier independente (autor ≠ verificador) para escrever `validation.md`; depois, na máquina com Cursor, validar **ao vivo** (transcript real, terminal e tokens).
+- **Blockers**: validação **ao vivo** exige a máquina do usuário; sem `transcript_path` o terminal degrada para o parser do Claude (comportamento atual).
+- **Uncommitted files**: nenhum (este Handoff entra no commit de docs da Fase 3).
 - **Branch**: `cursor-poc` (enviado para `origin/cursor-poc`). Remotes: `origin` = fork `weescoelho/habblaud`; `upstream` = `marmottajr/habblaud`.
