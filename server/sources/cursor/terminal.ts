@@ -57,6 +57,10 @@ function cursorToolView(rawName: string, input: Rec): ToolRender {
       return { tool: 'Write', ...toolView('Write', { file_path: path, content: str(input.contents) ?? str(input.content) }) };
     case 'StrReplace':
       return { tool: 'Edit', ...toolView('Edit', { file_path: path, old_string: input.old_string, new_string: input.new_string }) };
+    case 'MultiEdit':
+      // `edits` no canonical do Claude (`{old_string,new_string}`): reusa o MultiEdit do `toolView`, que junta as
+      // edições num diff com `@@`. Sem `edits` (ou sem `old_string`/`new_string`), não há entrada de diff.
+      return { tool: 'MultiEdit', ...toolView('MultiEdit', { ...input, file_path: path }) };
     case 'Glob':
       return { tool: 'Glob', ...toolView('Glob', { ...input, pattern: str(input.pattern) ?? str(input.glob_pattern) ?? '' }) };
     case 'Grep':

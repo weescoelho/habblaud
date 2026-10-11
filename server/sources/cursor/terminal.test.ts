@@ -68,6 +68,35 @@ describe('terminal do Cursor: tradução das ferramentas (CTRANS-05)', () => {
     if (e.kind === 'tool') expect(e.input).toBe('- a\n+ b');
   });
 
+  it('StrReplace sem old_string/new_string mantém o comportamento atual (sem diff)', () => {
+    const [e] = read(msg('assistant', [tool('StrReplace', { path: 'a.ts' })]));
+    expect(e).toMatchObject({ kind: 'tool', tool: 'Edit', title: 'Edit(a.ts)' });
+    if (e.kind === 'tool') expect(e.inputKind).toBeUndefined();
+  });
+
+  it('StrReplace mascara o segredo no diff', () => {
+    const secret = 'ghp_abcdefghijklmnopqrst';
+    const [e] = read(msg('assistant', [tool('StrReplace', { path: 'a.ts', old_string: '', new_string: `segredo ${secret}` })]));
+    expect(e).toMatchObject({ kind: 'tool', tool: 'Edit', inputKind: 'diff' });
+    if (e.kind === 'tool') {
+      expect(e.input).not.toContain(secret);
+      expect(e.input).toContain('gh*_***');
+    }
+  });
+
+  it('diff acima do limite trunca com indicador', () => {
+    const long = Array.from({ length: 400 }, (_, i) => `linha ${i}`).join('\n');
+    const [e] = read(msg('assistant', [tool('StrReplace', { path: 'a.ts', old_string: long, new_string: '' })]));
+    expect(e).toMatchObject({ kind: 'tool', tool: 'Edit', inputKind: 'diff' });
+    if (e.kind === 'tool') expect(e.input?.includes('…')).toBe(true);
+  });
+
+  it('MultiEdit vira diff com as edições', () => {
+    const [e] = read(msg('assistant', [tool('MultiEdit', { path: 'b.ts', edits: [{ old_string: 'a', new_string: 'b' }, { old_string: 'c', new_string: 'd' }] })]));
+    expect(e).toMatchObject({ kind: 'tool', tool: 'MultiEdit', title: 'MultiEdit(b.ts)', inputKind: 'diff' });
+    if (e.kind === 'tool') expect(e.input).toBe('- a\n+ b\n@@\n- c\n+ d');
+  });
+
   it('Glob usa glob_pattern no título', () => {
     const [e] = read(msg('assistant', [tool('Glob', { glob_pattern: '**/*.ts' })]));
     expect(e).toMatchObject({ kind: 'tool', tool: 'Glob', title: 'Glob(**/*.ts)' });

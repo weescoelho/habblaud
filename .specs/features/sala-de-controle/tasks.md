@@ -302,11 +302,11 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] Edição com remoção+adição exibe `-`/`+` na entrada da ferramenta (SC-06, SC-07)
-- [ ] Diff acima do limite trunca com indicador (SC-08); segredo mascarado (SC-09)
-- [ ] Sem `old_string`/`new_string`, mantém o comportamento atual
-- [ ] Gate check passes: `npx vitest run server/sources/cursor/terminal.test.ts`
-- [ ] Test count: casos `+`/`-`, truncamento e máscara verdes (sem remoção de teste)
+- [x] Edição com remoção+adição exibe `-`/`+` na entrada da ferramenta (SC-06, SC-07)
+- [x] Diff acima do limite trunca com indicador (SC-08); segredo mascarado (SC-09)
+- [x] Sem `old_string`/`new_string`, mantém o comportamento atual
+- [x] Gate check passes: `npx vitest run server/sources/cursor/terminal.test.ts`
+- [x] Test count: casos `+`/`-`, truncamento e máscara verdes (sem remoção de teste)
 
 **Tests**: unit
 **Gate**: quick
