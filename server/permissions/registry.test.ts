@@ -502,6 +502,36 @@ describe('PermissionRegistry: "sempre permitir" do Cursor (e o Codex inalterado)
     expect(codex.decide(xid, { behavior: 'deny', message: 'não', interrupt: true })).toBe('unsupported');
     expect(codex.decide(xid, { behavior: 'deny', message: 'não' })).toBe('ok');
   });
+
+  it('cursor MCP: sem "note" na regra, o texto da sugestão usa o pattern', () => {
+    const { registry } = setupCursor();
+    const id = registered(
+      registry.register(
+        cursorInput({ tool_name: 'MCP:github__create_issue', tool_input: { title: 'Bug' }, suggest_rule: { tool: 'MCP:github__create_issue', pattern: '^MCP:github__create_issue$' } }),
+      ),
+    );
+    expect(registry.detail(id)!.suggestions).toEqual([{ index: 0, rules: ['MCP:github__create_issue(^MCP:github__create_issue$)'], destination: 'habblaud' }]);
+  });
+
+  it('suggest_rule fora do limite (tool>200 ou pattern>400) é descartado; no limite, aceito', () => {
+    const { registry } = setupCursor();
+    const longTool = registered(registry.register(cursorInput({ suggest_rule: { tool: 'T'.repeat(201), pattern: '^x' } })));
+    expect(registry.detail(longTool)!.suggestions).toBeUndefined();
+    const longPattern = registered(registry.register(cursorInput({ suggest_rule: { tool: 'Shell', pattern: 'x'.repeat(401) } })));
+    expect(registry.detail(longPattern)!.suggestions).toBeUndefined();
+    const atLimit = registered(registry.register(cursorInput({ suggest_rule: { tool: 'Shell', pattern: 'x'.repeat(400) } })));
+    expect(registry.detail(atLimit)!.suggestions).toHaveLength(1);
+  });
+
+  it('cursor deny com motivo: a decisão chega ao hook (wait) e nenhuma regra é gravada', async () => {
+    const persisted: CursorRule[] = [];
+    const { registry } = setupCursor({ persistCursorRule: (r) => persisted.push(r) });
+    const id = registered(registry.register(cursorInput()));
+    const w = registry.wait(id, 25_000)!;
+    expect(registry.decide(id, { behavior: 'deny', message: 'use pnpm' })).toBe('ok');
+    await expect(w.result).resolves.toEqual({ status: 'decided', behavior: 'deny', message: 'use pnpm' });
+    expect(persisted).toEqual([]);
+  });
 });
 
 describe('peças puras', () => {
