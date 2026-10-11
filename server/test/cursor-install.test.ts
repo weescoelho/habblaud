@@ -48,6 +48,9 @@ describe('cursor-install.ts (funções puras)', () => {
     expect(EVENTS).toContain('sessionStart');
     expect(EVENTS).toContain('sessionEnd');
     expect(EVENTS).toContain('stop');
+    // Subagentes da IDE: sem estes, o Cursor nunca chama o hook para `subagentStart`/`subagentStop` e eles somem.
+    expect(EVENTS).toContain('subagentStart');
+    expect(EVENTS).toContain('subagentStop');
     expect(HOOK_SCRIPT).toMatch(/habblaud-cursor[\\/]+hook\.mjs$/);
   });
 

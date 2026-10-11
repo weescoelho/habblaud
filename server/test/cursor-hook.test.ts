@@ -11,6 +11,7 @@ import { createServer } from 'node:net';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { EVENTS } from '../../scripts/cursor-install';
 import { setQuiet } from '../log';
 import { readCursorConfig, writeCursorRule } from '../permissions/cursor-rules';
 import { tempDir } from './fixtures';
@@ -22,6 +23,7 @@ const HOOK = resolve(__dirname, '../../mod/habblaud-cursor/hook.mjs');
 
 /** Funções exportadas pelo hook (JavaScript puro, sem tipos). */
 interface HookModule {
+  OBSERVED: Set<string>;
   readConfig(env: NodeJS.ProcessEnv): { port: number; waitMs: number };
   permissionBody(input: Record<string, unknown>, timeoutMs: number): Record<string, unknown>;
   decisionOutput(result: unknown): unknown;
@@ -133,6 +135,20 @@ describe('hook.mjs do Cursor (processo)', () => {
     expect(r).toMatchObject({ code: 0, stdout: '' });
     expect(r.ms).toBeLessThan(3_000);
     expect(live.calls).toEqual([{ input }]);
+    expect(srv.registry!.size).toBe(0);
+  });
+
+  it('evento de subagente (subagentStart/subagentStop) é observado: vai para /api/cursor/events, sem registrar pedido', async () => {
+    srv = await servePermissions({ cursor: true, cursorLive: live });
+    writeConfig({ port: srv.port });
+    const start = cursorEvent('subagentStart', { subagent_id: 'sa-1', parent_conversation_id: CURSOR_CONV, subagent_type: 'explore', task: 'Mapear o repositório' });
+    const stop = cursorEvent('subagentStop', { subagent_id: 'sa-1' });
+    let r = await runHook(JSON.stringify(start));
+    expect(r).toMatchObject({ code: 0, stdout: '' });
+    expect(r.ms).toBeLessThan(3_000);
+    r = await runHook(JSON.stringify(stop));
+    expect(r).toMatchObject({ code: 0, stdout: '' });
+    expect(live.calls.map((c) => c.input.hook_event_name)).toEqual(['subagentStart', 'subagentStop']);
     expect(srv.registry!.size).toBe(0);
   });
 
@@ -313,6 +329,14 @@ describe('hook.mjs do Cursor (funções)', () => {
     expect(hook.readConfig({ HOME: home })).toEqual({ port: 4747, waitMs: 120_000 });
     writeFileSync(join(home, '.habblaud', 'cursor-hook.json'), '{ quebrado');
     expect(hook.readConfig({ HOME: home })).toEqual({ port: 4747, waitMs: 25_000 });
+  });
+
+  it('OBSERVED cobre os eventos instalados (paridade com EVENTS), inclusive os de subagente', () => {
+    expect(hook.OBSERVED).toBeInstanceOf(Set);
+    // O hook só encaminha o que está em OBSERVED e o instalador só registra o que está em EVENTS: divergir
+    // silencia um evento (foi o que escondeu o subagente da IDE). A paridade trava isso.
+    expect([...hook.OBSERVED].sort()).toEqual([...EVENTS].sort());
+    for (const event of ['subagentStart', 'subagentStop']) expect(hook.OBSERVED.has(event), event).toBe(true);
   });
 
   it('permissionBody: provider cursor, sessão pela conversa, a ferramenta derivada e o suggest_rule do "sempre permitir"', () => {

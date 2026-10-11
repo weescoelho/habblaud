@@ -56,6 +56,8 @@ export const EVENTS = [
   'afterAgentResponse',
   'afterAgentThought',
   'stop',
+  'subagentStart',
+  'subagentStop',
 ] as const;
 
 /** O hook de observação da POC (só captura, não decide): o setup tira as entradas dele, quem decide é o hook.mjs. */

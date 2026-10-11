@@ -90,7 +90,7 @@ npm run cursor:uninstall   # remove só o hook do Habblaud
 
 Numa máquina nova, depois de clonar a branch (`cursor-poc`) e rodar `npm install`, o `setup` faz de
 uma vez o que os passos manuais fazem: **tira a POC** (o `poc-hook.mjs`, que só observa e nunca
-decide), instala o hook real nos 15 eventos e **grava a camada base** (regras locais + `permissions.json`).
+decide), instala o hook real nos 17 eventos e **grava a camada base** (regras locais + `permissions.json`).
 
 ```bash
 git clone -b cursor-poc <fork> && cd <repo> && npm install
@@ -227,7 +227,7 @@ Exemplo do resultado de um "sempre permitir" para `npm test`:
   `rules` válidas e o nº de decisões locais registradas:
 
   ```
-  • ~/.cursor/hooks.json: instalado em 15 de 15 eventos
+  • ~/.cursor/hooks.json: instalado em 17 de 17 eventos
   Configuração do hook: ~/.habblaud/cursor-hook.json → eventos de decisão: beforeShellExecution, beforeMCPExecution (padrão); regras locais: 0; decisões locais: 0; porta 4747 e espera 25 s por padrão.
   ```
 - **`HABBLAUD_HOOK_DEBUG=1`**: o hook escreve no `stderr` o que classificou (evento observado,
@@ -243,7 +243,7 @@ saem quando estoura).
 
 ## 6. Verificação (checklist)
 
-- [ ] `npm run cursor:setup` numa casa limpa cria `~/.cursor/hooks.json` (15 eventos),
+- [ ] `npm run cursor:setup` numa casa limpa cria `~/.cursor/hooks.json` (17 eventos),
       `~/.habblaud/cursor-hook.json` (7 regras) e `~/.cursor/permissions.json`; rodar de novo não muda
       nada (idempotente) e respeita regras/permissões já existentes.
 - [ ] `npm run cursor:install` e `npm run cursor:status` mostram o hook instalado e os eventos de

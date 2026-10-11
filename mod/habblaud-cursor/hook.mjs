@@ -60,6 +60,8 @@ export const OBSERVED = new Set([
   'afterAgentResponse',
   'afterAgentThought',
   'stop',
+  'subagentStart',
+  'subagentStop',
 ]);
 /** Prazo do envio de um evento: o Habblaud responde na hora (e o hook não pode atrasar a IDE). */
 const EVENT_TIMEOUT_MS = 1_500;

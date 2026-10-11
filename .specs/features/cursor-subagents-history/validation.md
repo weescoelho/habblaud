@@ -29,7 +29,7 @@ O mapeamento AC→`CSH` segue a rastreabilidade de `spec.md:172-196`
 | **CSH-03** (`subagent_type`→`role` capitalizado, fallback `Subagente (Cursor)`; `task`→`title`) | PASS | `source.test.ts:285-286` (`role:'Explore'`, `title:'Mapear o repositório'`), `:301-302` (fallback `role:'Subagente (Cursor)'`, `title` `undefined`); parse `rollout.test.ts:112-146` (`subagentType`/`subagentTask`); impl. `rollout.ts:115-118,132-135` e `source.ts:35-38` (`roleOf`) |
 | **CSH-04** (`subagentStop` órfão → no-op, sem lançar, principal intacto) | PASS | `source.test.ts:305-311` — `expect(agent('cursor:s:ninguem')).toBeUndefined()` e principal `idle`, com `hook(...)===true`; impl. `source.ts:282-290` (sem tracker → nada) |
 | **CSH-05** (`subagentStart` sem id/pai conhecido → degrada, sem sub quebrado, principal intacto) | PASS | `source.test.ts:313-322` — `toBe(false)` para sem-id, sem-pai e pai desconhecido; `agent('cursor:s:sa-4'/'sa-5')` `undefined`; principal `idle`; impl. `source.ts:277-278,293-297` |
-| **CSH-06** (`subagentStart`/`Stop` reconhecidos em `HOOK_EVENTS` + bordas `working`/`idle`, sem regressão) | PASS | `rollout.test.ts:241-242` — `statusBorder('subagentStart')→{status:'working'}`, `statusBorder('subagentStop')→{status:'idle'}`; sem regressão nas bordas atuais `rollout.test.ts:227-240`; reconhecimento `source.test.ts:280,308` (`hook(...)===true`); impl. `rollout.ts:220-223`, `source.ts:55-56` |
+| **CSH-06** (`subagentStart`/`Stop` reconhecidos em `HOOK_EVENTS` + bordas `working`/`idle`, sem regressão) | PASS | `rollout.test.ts:241-242` — `statusBorder('subagentStart')→{status:'working'}`, `statusBorder('subagentStop')→{status:'idle'}`; sem regressão nas bordas atuais `rollout.test.ts:227-240`; reconhecimento `source.test.ts:280,308` (`hook(...)===true`); impl. `rollout.ts:220-223`, `source.ts:55-56`. **Corrigido em 2026-10-11**: a verificação original cobriu só o servidor e deixou passar o fio do hook (um evento fora de `EVENTS`/`OBSERVED` nunca chega à fonte) — ver "Correção do CSH-06 (fio do hook)" abaixo |
 | **CSH-07** (`subagentStart` sem `Stop` → `poll` expira e completa, sem prender em `working`) | PASS | `source.test.ts:324-335` — após `STALE_PRESENCE_MS`, `expect(agent('cursor:s:sa-6')?.status).toBe('done')` e principal `working`; impl. `source.ts:161-169` (`poll`→`leave`) e `:352-361` (`leave` faz `completeSub` em `kind:'sub'`) |
 
 ### P1 — GitHub a partir do transcript do Cursor
@@ -184,3 +184,38 @@ enfraquecimento de asserção.
   do Codex. Extrair a montagem só para testar um guard trivial seria refactor sem retorno — fica registrado
   como pendência de cobertura de fiação, não como lacuna de comportamento. Lição `L-003` mantida como
   candidata para uma futura costura de composição testável.
+
+---
+
+## Correção do CSH-06 (fio do hook) — 2026-10-11
+
+**Defeito encontrado em uso real** (relato: "ao abrir subagentes do Cursor, ele não aninha ao agente
+principal; aparece como novo agente"). Causa raiz: o tratamento de subagente existe no servidor
+(`source.ts` `subagentEvent`/`addSub`, `rollout.ts` `statusBorder`), mas **nunca recebia os eventos** —
+o fio do hook estava rompido em **dois pontos**, e a verificação original do CSH-06 só olhou a camada do
+servidor (`HOOK_EVENTS`/`statusBorder`):
+
+1. `scripts/cursor-install.ts` (`EVENTS`, que escreve `hooks.json`): **faltavam** `subagentStart`/
+   `subagentStop` → o IDE nunca era configurado para chamar o hook nesses eventos.
+2. `mod/habblaud-cursor/hook.mjs` (`OBSERVED`): **faltavam** os mesmos eventos → mesmo que chegassem,
+   o hook os descartava antes do POST (`hook.mjs:297`).
+
+Em produção, o `source.ts:275-330` era código morto (só passava em testes que chamam `ctx.hook(...)`
+direto, furando o script do hook). O harness já tinha os dois eventos desde a `cursor-poc-p4-p8`
+(`HARNESS_EVENTS`, CP48-05) — a "correção de método" não tinha sido replicada no produto.
+
+**Correção:** `subagentStart`/`subagentStop` acrescentados a `EVENTS` e a `OBSERVED` (17 eventos no
+total, espelhando o harness). Testes que travam a regressão:
+
+- `server/test/cursor-install.test.ts` — `EVENTS` contém os dois eventos (paridade com o harness).
+- `server/test/cursor-hook.test.ts` — (a) **paridade** `[...OBSERVED].sort()` = `[...EVENTS].sort()`
+  (um evento instalado e não observado — ou o contrário — é silêncio); (b) **ponta a ponta** pelo
+  processo: `subagentStart`/`subagentStop` chegam a `/api/cursor/events`.
+- `server/test/cursor-setup.test.ts` — texto do `setup` agora "17 eventos".
+
+**Sensor:** removendo `subagentStart` de `OBSERVED` → 2 falhas (paridade + processo); removendo
+`subagentStop` de `EVENTS` → 1 falha (instalador). Gate verde: `typecheck` + `vitest` (107 arquivos,
+1380 passed/2 skipped) + `build`.
+
+**Pendência do usuário:** o fio só passa a valer na máquina depois de **reinstalar** o hook
+(`npm run cursor:setup` reescreve `hooks.json` com os 17 eventos).

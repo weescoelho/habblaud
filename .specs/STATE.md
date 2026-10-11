@@ -20,12 +20,12 @@
 
 ## Handoff
 
-- **Feature**: `cursor-uso-mensagens` (`.specs/features/cursor-uso-mensagens/`) — **Fase 5 do Cursor**: uso do plano (ocultar o cartão) e mensagens (não oferecer na v1).
-- **Phase / Task**: **Execute** concluído (T1–T4; `validate_spec.py` 0/0 e `validate_tasks.py` 0 erros). Validação independente (Verifier) será executada por subagente separado (autor ≠ verificador).
-- **Completed** (desta feature): T1 `spec.md`/`design.md`/`tasks.md`; T2 `client/src/ui/usage.ts` (`usageCardAccounts`, filtro por `provider !== 'cursor'` no `UsageCards.render`; a conta `cursor` segue no snapshot/statusline); T3 `client/src/ui/composer-model.ts` (`CURSOR_OFF_TEXT` + ramo `provider === 'cursor'` → `off`, depois de replay/sub/offline, sem tocar em claude/codex); T4 roteiro (`06` §6.8, raiz) + este Handoff. Gate `typecheck` + `vitest` (107 files, 1378 passed / 2 skipped) + `build`.
-- **Resultados documentados**: (a) o Cursor **não tem** fonte local de uso do plano (P8: **🔴 confirmado** — só config/telemetria e `plans/`) → cartão de uso oculto na v1. (b) a v1 **não oferece** "Mandar mensagens" (P6 validou só a **forma** do `stop.followup_message`; efeito ao vivo pendente, lacuna C7) — o probe `mod/habblaud-cursor/followup-hook.mjs` segue como caminho validado para uma v2.
-- **In-progress** (file:line): nada.
-- **Next step**: rodar o Verifier independente (autor ≠ verificador) para escrever `validation.md`; depois, na máquina com Cursor, medir o efeito **ao vivo** do `followup_message` (P6/C7).
-- **Blockers**: a validação ao vivo de mensagens exige a máquina do usuário; a UI degrada para "responder no Cursor".
-- **Uncommitted files**: nenhum (este Handoff entra no commit de docs da Fase 5).
-- **Branch**: `cursor-poc` (enviado para `origin/cursor-poc`). Remotes: `origin` = fork `weescoelho/habblaud`; `upstream` = `marmottajr/habblaud`.
+- **Feature**: `sala-de-controle` (`.specs/features/sala-de-controle/`) — observabilidade em tempo real, triagem, controle de agentes e salas por projeto (8 histórias `SC-01..SC-40`). Pré-requisito corrigido: bugfix do `CSH-06` (`cursor-subagents-history`).
+- **Phase / Task**: **Design + Tasks escritos**; aguardando aprovação do usuário para iniciar o **Execute** (batches ~7 tasks; Verifier independente ao final). Bugfix do `CSH-06` concluído neste commit (fio do hook de subagente: `EVENTS`+`OBSERVED`).
+- **Completed** (recente): bugfix `CSH-06` — `subagentStart`/`subagentStop` em `scripts/cursor-install.ts` (`EVENTS`) e `mod/habblaud-cursor/hook.mjs` (`OBSERVED`), com paridade `OBSERVED`×`EVENTS` e teste ponta a ponta (`server/test/cursor-hook.test.ts`, `cursor-install.test.ts`, `cursor-setup.test.ts`; 17 eventos). `sala-de-controle`: `spec.md` (`validate_spec.py --strict` 0/0), `context.md` (rodadas 1–6), `design.md` e `tasks.md` (34 tasks / 8 fases).
+- **Resultados documentados**: subagentes do Cursor **não aninhavam** porque os eventos de subagente nunca chegavam ao servidor (código morto em produção); corrigido — exige **reinstalar** o hook (`npm run cursor:setup`) para valer na máquina. `sala-de-controle` depende disso em `SC-37` (subagente na mesma sala do principal).
+- **In-progress** (file:line): `.specs/features/sala-de-controle/tasks.md` — corrigir os diagramas para o `validate_tasks.py` passar 0 erros (fences com box-drawing → uma aresta `Tx -> Ty` por linha).
+- **Next step**: corrigir os diagramas, rodar `validate_tasks.py` (0 erros), apresentar design+tasks e pedir aprovação do Execute.
+- **Blockers**: aprovação do usuário para o Execute; validação **ao vivo** do `stop.followup_message` (máquina do usuário — lacuna C7).
+- **Uncommitted files**: `.specs/features/sala-de-controle/` (spec/context/design/tasks) — feature em rascunho, ainda não commitada.
+- **Branch**: `cursor-poc-v2`. Remotes: `origin` = fork `weescoelho/habblaud`; `upstream` = `marmottajr/habblaud`.
