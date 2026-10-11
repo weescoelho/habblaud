@@ -36,6 +36,7 @@ import { discoverCodexDirs } from './sources/codex/accounts';
 import { CodexHistory } from './sources/codex/history';
 import { CodexSource } from './sources/codex/source';
 import { CursorSource } from './sources/cursor/source';
+import { CursorHistory } from './sources/cursor/history';
 import { createBuildReader } from './build';
 import { UpdateChecker } from './updates/checker';
 
@@ -124,6 +125,8 @@ const history = config.terminal
   ? new HistorySet([new SessionHistory({ accounts: () => accounts.entries(), openAgentOf: (acc, sid) => openMainAgent(office.list(), acc, sid) })])
   : undefined;
 if (history && codex) history.add(new CodexHistory({ accounts: () => accounts.entriesOf('codex'), openAgentOf: (acc, sid) => openMainAgent(office.list(), acc, sid) }));
+// O histórico do Cursor (transcripts da IDE) entra só com o Cursor ligado; desligá-lo não afeta Claude/Codex.
+if (history && cursor) history.add(new CursorHistory({ accounts: () => accounts.entriesOf('cursor'), openAgentOf: (acc, sid) => openMainAgent(office.list(), acc, sid) }));
 // Linha do tempo do timelapse: grava cada snapshot novo (com throttle) em <dataDir>/timeline.
 const timelineDir = join(config.dataDir, TIMELINE_DIR);
 const timeline = config.timeline ? new TimelineRecorder({ dir: timelineDir }) : undefined;

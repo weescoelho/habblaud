@@ -273,9 +273,9 @@ T8
 
 **Done when**:
 
-- [ ] com `config.cursor`, o `HistorySet` recebe o `CursorHistory` e a conta `'cursor'` é despachada para ele
-- [ ] sem `config.cursor` (ou sem terminal), nada é registrado e o histórico de Claude/Codex segue igual
-- [ ] Gate check passes: `npm run typecheck && npm test && npm run build`
+- [x] com `config.cursor`, o `HistorySet` recebe o `CursorHistory` e a conta `'cursor'` é despachada para ele
+- [x] sem `config.cursor` (ou sem terminal), nada é registrado e o histórico de Claude/Codex segue igual
+- [x] Gate check passes: `npm run typecheck && npm test && npm run build`
 
 **Tests**: none
 **Gate**: build
