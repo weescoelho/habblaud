@@ -118,6 +118,12 @@ interface ToolBlock {
   input: Rec;
 }
 
+/** Bloco de ferramenta de uma linha (nome + entrada): o que a detecção do GitHub consome. */
+export interface CursorToolUse {
+  name: string;
+  input: Rec;
+}
+
 /**
  * Extrai os blocos de ferramenta de UM contêiner de mensagem, cobrindo os dois estilos conhecidos:
  * estilo OpenAI/Cursor (`tool_calls: [{ function: { name, arguments } }]`) e estilo Anthropic
@@ -157,6 +163,16 @@ function toolBlocks(rec: Rec): ToolBlock[] {
   const msg = recOf(rec.message);
   if (msg) out.push(...blocksOf(msg));
   return out;
+}
+
+/**
+ * Extrai os `tool_use` de uma linha do transcript (estilo Anthropic/OpenAI, de topo ou aninhados em
+ * `message.content`). Linha inválida/desconhecida devolve `[]`, sem lançar — é a **fonte única** que o
+ * `cursor/github.ts` reusa (nada de duplicar o parsing do schema).
+ */
+export function cursorToolUses(line: string): CursorToolUse[] {
+  const rec = parseJsonObject(line);
+  return rec ? toolBlocks(rec) : [];
 }
 
 /** Traduz um bloco de ferramenta numa atividade legível (reusa `describeCursorTool`). */

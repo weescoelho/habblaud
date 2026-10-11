@@ -151,12 +151,12 @@ T8
 
 **Done when**:
 
-- [ ] `cursorToolUses('{"role":"assistant","message":{"content":[{"type":"tool_use","name":"Shell","input":{"command":"git push"}}]}}')` devolve `[{ name:'Shell', input:{ command:'git push' } }]`
-- [ ] o estilo OpenAI (`tool_calls:[{function:{name,arguments}}]`) também é extraído (aliases defensivos)
-- [ ] linha inválida, em branco ou `{"type":"turn_ended"}` devolve `[]`, sem lançar
-- [ ] `server/sources/cursor/transcript.test.ts` cobre os casos acima
-- [ ] Gate check passes: `npx vitest run server/sources/cursor/transcript.test.ts`
-- [ ] Test count: 6+ casos passam (sem deleções silenciosas)
+- [x] `cursorToolUses('{"role":"assistant","message":{"content":[{"type":"tool_use","name":"Shell","input":{"command":"git push"}}]}}')` devolve `[{ name:'Shell', input:{ command:'git push' } }]`
+- [x] o estilo OpenAI (`tool_calls:[{function:{name,arguments}}]`) também é extraído (aliases defensivos)
+- [x] linha inválida, em branco ou `{"type":"turn_ended"}` devolve `[]`, sem lançar
+- [x] `server/sources/cursor/transcript.test.ts` cobre os casos acima
+- [x] Gate check passes: `npx vitest run server/sources/cursor/transcript.test.ts`
+- [x] Test count: 6+ casos passam (sem deleções silenciosas)
 
 **Tests**: unit
 **Gate**: quick

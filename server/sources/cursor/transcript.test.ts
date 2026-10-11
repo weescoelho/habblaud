@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { tempDir } from '../../test/fixtures';
-import { classifyTranscript, inspectTranscript, parseCursorTranscriptLine } from './transcript';
+import { classifyTranscript, cursorToolUses, inspectTranscript, parseCursorTranscriptLine } from './transcript';
 
 let tmp: ReturnType<typeof tempDir>;
 beforeEach(() => {
@@ -165,5 +165,33 @@ describe('parseCursorTranscriptLine', () => {
 
   it('marcador de turno do Cursor (sem role/tool) devolve vazio', () => {
     expect(parseCursorTranscriptLine('{"type":"turn_ended","status":"success"}')).toEqual({ activities: [] });
+  });
+});
+
+describe('cursorToolUses', () => {
+  it('extrai o tool_use de message.content (formato do Cursor)', () => {
+    expect(
+      cursorToolUses('{"role":"assistant","message":{"content":[{"type":"tool_use","name":"Shell","input":{"command":"git push"}}]}}'),
+    ).toEqual([{ name: 'Shell', input: { command: 'git push' } }]);
+  });
+
+  it('extrai vários tool_use da mesma linha', () => {
+    const uses = cursorToolUses(
+      '{"role":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/a.ts"}},{"type":"tool_use","name":"Shell","input":{"command":"gh pr create"}}]}}',
+    );
+    expect(uses.map((u) => u.name)).toEqual(['Read', 'Shell']);
+  });
+
+  it('lê o estilo OpenAI (tool_calls) com argumentos em string JSON', () => {
+    expect(cursorToolUses('{"role":"assistant","tool_calls":[{"function":{"name":"Shell","arguments":"{\\"command\\":\\"git push\\"}"}}]}')).toEqual([
+      { name: 'Shell', input: { command: 'git push' } },
+    ]);
+  });
+
+  it('linha inválida, em branco, texto ou marcador de turno devolve [], sem lançar', () => {
+    expect(cursorToolUses('não é json')).toEqual([]);
+    expect(cursorToolUses('')).toEqual([]);
+    expect(cursorToolUses('{"type":"turn_ended","status":"success"}')).toEqual([]);
+    expect(cursorToolUses('{"role":"user","message":{"content":[{"type":"text","text":"oi"}]}}')).toEqual([]);
   });
 });
