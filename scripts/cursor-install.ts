@@ -39,7 +39,10 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const HOOK_SCRIPT = join(ROOT, 'mod', 'habblaud-cursor', 'hook.mjs');
 /** O hook do Habblaud é reconhecido pelo caminho do script no comando (em qualquer pasta do repositório). */
 const HOOK_MARK = /habblaud-cursor[\\/]+hook\.mjs/;
-/** Eventos do Cursor em que o hook entra (o mesmo conjunto que ele observa). */
+/**
+ * Eventos em que o instalador registra o hook. `afterAgentThought` fica de fora (a IDE dispara por trecho;
+ * o hook ignora sem POST se ainda estiver no hooks.json antigo). OBSERVED no hook.mjs pode ser um superconjunto.
+ */
 export const EVENTS = [
   'sessionStart',
   'sessionEnd',
@@ -54,7 +57,6 @@ export const EVENTS = [
   'beforeReadFile',
   'afterFileEdit',
   'afterAgentResponse',
-  'afterAgentThought',
   'stop',
   'subagentStart',
   'subagentStop',
@@ -198,7 +200,8 @@ function hooksOf(settings: Settings): Rec | string {
 /**
  * Plano de instalação no formato PLANO do Cursor: acrescenta a entrada do hook no FIM de cada evento, preservando as
  * entradas alheias na posição delas. Já instalado (entradas iguais, sem duplicatas): nada muda. Atualização (caminho
- * do repositório mudou): a entrada é trocada NO MESMO lugar.
+ * do repositório mudou): a entrada é trocada NO MESMO lugar. Eventos que saíram de `events` (ex.: afterAgentThought)
+ * perdem a entrada do Habblaud; se a lista esvaziar, a chave some.
  */
 export function planInstall(settings: Settings, command: string, events: readonly string[]): PlanAction {
   const parsed = hooksOf(settings);
@@ -207,6 +210,8 @@ export function planInstall(settings: Settings, command: string, events: readonl
   const added: string[] = [];
   const updated: string[] = [];
   const deduped: string[] = [];
+  const dropped: string[] = [];
+  const wanted = new Set(events);
   for (const event of events) {
     const cur = Array.isArray(hooks[event]) ? (hooks[event] as unknown[]) : undefined;
     const list = cur ? [...cur] : [];
@@ -234,11 +239,23 @@ export function planInstall(settings: Settings, command: string, events: readonl
     }
     hooks[event] = list;
   }
-  if (!added.length && !updated.length && !deduped.length) return { action: 'none', message: 'já instalado' };
+  // Eventos que saíram de EVENTS (ex.: afterAgentThought): tira a nossa entrada; alheios ficam.
+  for (const event of Object.keys(hooks)) {
+    if (wanted.has(event)) continue;
+    const cur = Array.isArray(hooks[event]) ? (hooks[event] as unknown[]) : undefined;
+    if (!cur) continue;
+    const kept = cur.filter((e) => !isOurEntry(e));
+    if (kept.length === cur.length) continue;
+    dropped.push(event);
+    if (kept.length) hooks[event] = kept;
+    else delete hooks[event];
+  }
+  if (!added.length && !updated.length && !deduped.length && !dropped.length) return { action: 'none', message: 'já instalado' };
   const parts = [
     added.length ? (updated.length ? `instalado em ${added.join(', ')}` : `instalado (${added.length} eventos)`) : '',
     updated.length ? `atualizado em ${updated.join(', ')}` : '',
     deduped.length ? `duplicatas do Habblaud removidas em ${deduped.join(', ')}` : '',
+    dropped.length ? `removido ${dropped.join(', ')}` : '',
   ].filter(Boolean);
   const out: Settings = { ...settings, hooks };
   if (out.version === undefined) out.version = 1;

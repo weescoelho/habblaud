@@ -47,10 +47,10 @@ describe('cursor:setup (comando de verdade, HOME falso)', () => {
     }
   };
 
-  it('casa limpa: instala o hook nos 17 eventos e grava as duas camadas de config', () => {
+  it(`casa limpa: instala o hook nos ${EVENTS.length} eventos e grava as duas camadas de config`, () => {
     const r = cli();
     expect(r.status).toBe(0);
-    expect(r.stdout).toMatch(/17 eventos/);
+    expect(r.stdout).toMatch(new RegExp(`${EVENTS.length} eventos`));
     expect(r.stdout).toMatch(/Auto-review/);
 
     const saved = readJson(hooksFile()) as { version?: unknown; hooks?: Hooks };

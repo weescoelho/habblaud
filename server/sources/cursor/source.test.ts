@@ -121,6 +121,14 @@ describe('fonte do Cursor: presença por hooks', () => {
     expect(ctx.notices.some((n) => n.includes('encerrou'))).toBe(true);
   });
 
+  it('evento magro de MCP e afterAgentThought residual não quebram a fonte', () => {
+    const ctx = setup();
+    expect(ctx.hook(ev('afterMCPExecution', { tool_name: 'MCP:excalidraw__read_me', tool_input: { topic: '' } }))).toBe(true);
+    expect(ctx.agent()?.status).toBe('working');
+    expect(ctx.hook(ev('afterAgentThought'))).toBe(true);
+    expect(ctx.agent()?.status).toBe('working');
+  });
+
   it('sem workspace_roots: o trabalho usa o cwd do evento', () => {
     const ctx = setup();
     expect(ctx.hook({ hook_event_name: 'sessionStart', conversation_id: 'c2', cwd: '/projetos/api' })).toBe(true);

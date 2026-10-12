@@ -25,7 +25,8 @@
 // eventos de decisão beforeShellExecution/beforeMCPExecution.
 //
 // O hook não injeta texto na conversa. Entregar mensagem no `stop` (`followup_message`) segurava a IDE a cada
-// evento e não entrava na sessão de forma confiável.
+// evento e não entrava na sessão de forma confiável. `afterAgentThought` é observado (OBSERVED) para hooks.json
+// antigo, mas não gera POST: a IDE dispara por trecho e o escritório não cria atividade.
 //
 // Regras: node puro (22+), só `node:*`, sem dependências; nunca trava nem quebra a sessão: todo erro = sair com 0 e
 // sem saída; nos eventos de observação nada vai para o stdout (no beforeSubmitPrompt ele viraria contexto do modelo).
@@ -73,11 +74,61 @@ const REGISTER_TIMEOUT_MS = 2_000;
 /** Espera máxima de cada long-poll (o servidor responde "pending" e o hook pergunta de novo). */
 const POLL_S = 25;
 const STDIN_TIMEOUT_MS = 5_000;
-const MAX_STDIN = 8 * 1024 * 1024;
+/** Teto do stdin: acima disto o hook desiste (não parseia JSON truncado) e sai 0 sem POST. */
+export const MAX_STDIN = 512 * 1024;
 /** Textos do evento e dos argumentos mandados ao Habblaud (o servidor só mostra prévias). */
 const MAX_STRING = 8_000;
 /** Corpo do pedido (o servidor recusa acima de 256 KB). */
 const MAX_BODY = 200_000;
+/**
+ * Campos que o servidor lê em parseCursorEvent (server/sources/cursor/rollout.ts). O resto do stdin
+ * (resultado MCP, thought, extras da IDE) não vai no POST.
+ */
+const EVENT_KEYS = [
+  'hook_event_name',
+  'hookEventName',
+  'conversation_id',
+  'conversationId',
+  'session_id',
+  'sessionId',
+  'workspace_roots',
+  'workspaceRoots',
+  'workspace_root',
+  'workspaceRoot',
+  'cwd',
+  'workspace',
+  'tool_name',
+  'toolName',
+  'tool_input',
+  'toolInput',
+  'command',
+  'cmd',
+  'transcript_path',
+  'transcriptPath',
+  'subagent_id',
+  'subagentId',
+  'subagent_type',
+  'subagentType',
+  'task',
+  'parent_conversation_id',
+  'parentConversationId',
+  'child_conversation_id',
+  'childConversationId',
+  'agent_transcript_path',
+  'agentTranscriptPath',
+  'file_path',
+  'filePath',
+  'path',
+  'edits',
+  'input_tokens',
+  'inputTokens',
+  'output_tokens',
+  'outputTokens',
+  'cache_read_tokens',
+  'cacheReadTokens',
+  'cache_write_tokens',
+  'cacheWriteTokens',
+];
 
 const debug = process.env.HABBLAUD_HOOK_DEBUG === '1' ? (msg) => process.stderr.write(`[habblaud-cursor] ${msg}\n`) : () => {};
 
@@ -210,9 +261,18 @@ function fitted(v, size) {
   return out;
 }
 
-/** Corpo de POST /api/cursor/events: o stdin do hook inteiro, com os textos cortados. */
+/** Copia só os campos que o escritório usa; o resto do stdin (resultado MCP, thought) fica de fora. */
+export function slimEvent(input) {
+  const out = {};
+  for (const k of EVENT_KEYS) {
+    if (input[k] !== undefined) out[k] = input[k];
+  }
+  return out;
+}
+
+/** Corpo de POST /api/cursor/events: campos do CursorEvent, com os textos cortados. */
 export function eventBody(input) {
-  return { event: fitted(input, (event) => JSON.stringify({ event }).length) };
+  return { event: fitted(slimEvent(input), (event) => JSON.stringify({ event }).length) };
 }
 
 /** Corpo de POST /api/permissions: provider cursor, sessão = conversa e a ferramenta derivada do evento. */
@@ -274,7 +334,7 @@ async function call(base, method, path, body, timeoutMs) {
   try {
     const res = await fetch(`${base}${path}`, {
       method,
-      headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+      headers: body === undefined ? { Connection: 'close' } : { 'Content-Type': 'application/json', Connection: 'close' },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -307,6 +367,11 @@ export async function run(env = process.env, stdinText) {
     if (!isObject(input)) return undefined;
     const event = eventNameOf(input);
     if (!event || !OBSERVED.has(event)) return undefined;
+    // Thought: a IDE pode disparar por trecho; o escritório não cria atividade. Sem POST, exit imediato.
+    if (event === 'afterAgentThought') {
+      debug(`${event}: ignorado (sem POST)`);
+      return undefined;
+    }
 
     const cfg = readConfig(env);
     const policy = readPolicy(env);
@@ -364,11 +429,11 @@ export async function main() {
   // Rede de segurança: nada mantém o processo vivo além da espera (a IDE também tem o tempo limite do hook).
   setTimeout(() => process.exit(0), waitMs + 15_000).unref();
   const out = await run();
-  // Sem process.exit() logo depois do fetch: no Windows (Node 23 até 24.19) ele derruba o processo com 0xC0000409
-  // enquanto o V8 ainda compila em segundo plano o parser do fetch (nodejs/node#56645). O processo sai sozinho quando
-  // o loop esvazia, o que também espera a escrita da decisão no pipe; se algo ainda segurar o loop, o process.exit
-  // vem 1 s depois.
-  const finish = () => setTimeout(() => process.exit(0), 1_000).unref();
+  // Windows (Node 23 até 24.19): process.exit() logo depois do fetch derruba com 0xC0000409 enquanto o V8
+  // ainda compila o parser do fetch (nodejs/node#56645). Lá o exit atrasado de 1 s fica. Nos outros SOs o
+  // keep-alive do fetch + esse atraso segurava a IDE ~1 s por evento — sai na hora (depois de escrever o stdout).
+  const finish =
+    process.platform === 'win32' ? () => setTimeout(() => process.exit(0), 1_000).unref() : () => process.exit(0);
   if (out) process.stdout.write(`${JSON.stringify(out)}\n`, finish);
   else finish();
 }

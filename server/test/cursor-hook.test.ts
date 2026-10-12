@@ -20,10 +20,18 @@ import { CURSOR_MAIN, CURSOR_CONV, servePermissions, type PermissionServer } fro
 setQuiet(true);
 
 const HOOK = resolve(__dirname, '../../mod/habblaud-cursor/hook.mjs');
+/**
+ * Observação precisa fechar bem abaixo do exit atrasado de 1 s (workaround Windows). 200 ms vale numa
+ * máquina quieta; na suíte isolada o spawn do Node sobe — 800 ms ainda falha se o timer de 1 s voltar.
+ */
+const OBSERVE_MS = process.platform === 'win32' ? 3_000 : 800;
 
 /** Funções exportadas pelo hook (JavaScript puro, sem tipos). */
 interface HookModule {
   OBSERVED: Set<string>;
+  MAX_STDIN: number;
+  slimEvent(input: Record<string, unknown>): Record<string, unknown>;
+  eventBody(input: Record<string, unknown>): { event: Record<string, unknown> };
   readConfig(env: NodeJS.ProcessEnv): { port: number; waitMs: number };
   permissionBody(input: Record<string, unknown>, timeoutMs: number): Record<string, unknown>;
   decisionOutput(result: unknown): unknown;
@@ -133,8 +141,8 @@ describe('hook.mjs do Cursor (processo)', () => {
     const input = cursorEvent('afterShellExecution', { command: 'ls', exit_code: 0 });
     const r = await runHook(JSON.stringify(input));
     expect(r).toMatchObject({ code: 0, stdout: '' });
-    expect(r.ms).toBeLessThan(3_000);
-    expect(live.calls).toEqual([{ input }]);
+    expect(r.ms).toBeLessThan(OBSERVE_MS);
+    expect(live.calls).toEqual([{ input: hook.slimEvent(input) }]);
     expect(srv.registry!.size).toBe(0);
   });
 
@@ -145,7 +153,7 @@ describe('hook.mjs do Cursor (processo)', () => {
     const stop = cursorEvent('subagentStop', { subagent_id: 'sa-1' });
     let r = await runHook(JSON.stringify(start));
     expect(r).toMatchObject({ code: 0, stdout: '' });
-    expect(r.ms).toBeLessThan(3_000);
+    expect(r.ms).toBeLessThan(OBSERVE_MS);
     r = await runHook(JSON.stringify(stop));
     expect(r).toMatchObject({ code: 0, stdout: '' });
     expect(live.calls.map((c) => c.input.hook_event_name)).toEqual(['subagentStart', 'subagentStop']);
@@ -189,11 +197,35 @@ describe('hook.mjs do Cursor (processo)', () => {
     writeConfig({ port: srv.port });
     let r = await runHook(JSON.stringify(beforeRead()));
     expect(r).toMatchObject({ code: 0, stdout: '' });
-    expect(r.ms).toBeLessThan(3_000);
+    expect(r.ms).toBeLessThan(OBSERVE_MS);
     r = await runHook(JSON.stringify(preTool()));
     expect(r).toMatchObject({ code: 0, stdout: '' });
     expect(live.calls.map((c) => c.input.hook_event_name)).toEqual(['beforeReadFile', 'preToolUse']);
     expect(srv.registry!.size).toBe(0);
+  });
+
+  it('afterAgentThought não gera POST e sai rápido', async () => {
+    srv = await servePermissions({ cursor: true, cursorLive: live });
+    writeConfig({ port: srv.port });
+    const r = await runHook(JSON.stringify(cursorEvent('afterAgentThought', { thought: 'x'.repeat(8_000) })));
+    expect(r).toMatchObject({ code: 0, stdout: '' });
+    expect(r.ms).toBeLessThan(OBSERVE_MS);
+    expect(live.calls).toEqual([]);
+    expect(srv.registry!.size).toBe(0);
+  });
+
+  it('afterMCPExecution com resultado enorme: o POST não leva o result', async () => {
+    srv = await servePermissions({ cursor: true, cursorLive: live });
+    writeConfig({ port: srv.port });
+    const result = 'z'.repeat(400 * 1024);
+    const input = cursorEvent('afterMCPExecution', { tool_name: 'MCP:excalidraw__read_me', tool_input: { topic: '' }, result });
+    const r = await runHook(JSON.stringify(input));
+    expect(r).toMatchObject({ code: 0, stdout: '' });
+    expect(r.ms).toBeLessThan(OBSERVE_MS);
+    expect(live.calls).toHaveLength(1);
+    expect(live.calls[0].input).toMatchObject({ hook_event_name: 'afterMCPExecution', tool_name: 'MCP:excalidraw__read_me', tool_input: { topic: '' } });
+    expect(live.calls[0].input).not.toHaveProperty('result');
+    expect(JSON.stringify(live.calls[0].input).length).toBeLessThan(2_000);
   });
 
   it('decisionEvents reativa beforeReadFile: o pedido volta a ser registrado (degradação graciosa)', async () => {
@@ -331,12 +363,36 @@ describe('hook.mjs do Cursor (funções)', () => {
     expect(hook.readConfig({ HOME: home })).toEqual({ port: 4747, waitMs: 25_000 });
   });
 
-  it('OBSERVED cobre os eventos instalados (paridade com EVENTS), inclusive os de subagente', () => {
+  it('OBSERVED cobre os eventos instalados; afterAgentThought fica no hook e fora do install', () => {
     expect(hook.OBSERVED).toBeInstanceOf(Set);
-    // O hook só encaminha o que está em OBSERVED e o instalador só registra o que está em EVENTS: divergir
-    // silencia um evento (foi o que escondeu o subagente da IDE). A paridade trava isso.
-    expect([...hook.OBSERVED].sort()).toEqual([...EVENTS].sort());
+    // EVENTS ⊆ OBSERVED: o instalador não registra evento que o hook não conhece.
+    for (const event of EVENTS) expect(hook.OBSERVED.has(event), event).toBe(true);
     for (const event of ['subagentStart', 'subagentStop']) expect(hook.OBSERVED.has(event), event).toBe(true);
+    // Thought: o hook ainda reconhece (hooks.json antigo) mas não instala de novo.
+    expect(hook.OBSERVED.has('afterAgentThought')).toBe(true);
+    expect(EVENTS).not.toContain('afterAgentThought');
+  });
+
+  it('eventBody: só os campos do CursorEvent; result/thought ficam de fora', () => {
+    expect(hook.MAX_STDIN).toBe(512 * 1024);
+    const huge = cursorEvent('afterMCPExecution', {
+      tool_name: 'MCP:excalidraw__read_me',
+      tool_input: { topic: '' },
+      result: 'r'.repeat(50_000),
+      thought: 't'.repeat(1_000),
+    });
+    const body = hook.eventBody(huge);
+    expect(body.event).toMatchObject({
+      hook_event_name: 'afterMCPExecution',
+      conversation_id: CURSOR_CONV,
+      cwd: '/p/loja',
+      tool_name: 'MCP:excalidraw__read_me',
+      tool_input: { topic: '' },
+    });
+    expect(body.event).not.toHaveProperty('result');
+    expect(body.event).not.toHaveProperty('thought');
+    expect(JSON.stringify(body).length).toBeLessThan(2_000);
+    expect(hook.slimEvent({ hook_event_name: 'preToolUse', extra: 1 })).toEqual({ hook_event_name: 'preToolUse' });
   });
 
   it('permissionBody: provider cursor, sessão pela conversa, a ferramenta derivada e o suggest_rule do "sempre permitir"', () => {

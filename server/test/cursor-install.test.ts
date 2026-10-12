@@ -51,6 +51,7 @@ describe('cursor-install.ts (funções puras)', () => {
     // Subagentes da IDE: sem estes, o Cursor nunca chama o hook para `subagentStart`/`subagentStop` e eles somem.
     expect(EVENTS).toContain('subagentStart');
     expect(EVENTS).toContain('subagentStop');
+    expect(EVENTS).not.toContain('afterAgentThought');
     expect(HOOK_SCRIPT).toMatch(/habblaud-cursor[\\/]+hook\.mjs$/);
   });
 
@@ -88,6 +89,40 @@ describe('cursor-install.ts (funções puras)', () => {
     expect(upd.message).toContain('atualizado');
     expect(asHooks(upd.settings).beforeReadFile).toEqual([{ command: 'outro-hook' }, { command: NEW }, { command: 'depois' }]);
     expect(planInstall(upd.settings, NEW, EVENTS)).toEqual({ action: 'none', message: 'já instalado' });
+  });
+
+  it('reinstall tira afterAgentThought nosso e deixa hook alheio nesse evento', () => {
+    const leftover: Settings = {
+      version: 1,
+      hooks: {
+        stop: [{ command: CMD }],
+        afterAgentThought: [{ command: 'outro-thought' }, { command: CMD }],
+      },
+    };
+    const p = planInstall(leftover, CMD, ['stop']);
+    expect(p.action).toBe('install');
+    if (p.action !== 'install') return;
+    expect(p.message).toMatch(/removido afterAgentThought/);
+    expect(asHooks(p.settings).stop).toEqual([{ command: CMD }]);
+    expect(asHooks(p.settings).afterAgentThought).toEqual([{ command: 'outro-thought' }]);
+    expect(asHooks(p.settings)).not.toHaveProperty('sessionStart');
+
+    const onlyOurs: Settings = { version: 1, hooks: { afterAgentThought: [{ command: CMD }], stop: [{ command: CMD }] } };
+    const gone = planInstall(onlyOurs, CMD, ['stop']);
+    expect(gone.action).toBe('install');
+    if (gone.action !== 'install') return;
+    expect(asHooks(gone.settings)).toEqual({ stop: [{ command: CMD }] });
+    expect(planInstall(gone.settings, CMD, ['stop'])).toEqual({ action: 'none', message: 'já instalado' });
+
+    const old = planInstall({}, CMD, [...EVENTS, 'afterAgentThought']);
+    if (old.action !== 'install') throw new Error('esperado install');
+    expect(asHooks(old.settings)).toHaveProperty('afterAgentThought');
+    const full = planInstall(old.settings, CMD, EVENTS);
+    expect(full.action).toBe('install');
+    if (full.action !== 'install') return;
+    expect(full.message).toMatch(/removido afterAgentThought/);
+    expect(Object.keys(asHooks(full.settings)).sort()).toEqual([...EVENTS].sort());
+    expect(asHooks(full.settings)).not.toHaveProperty('afterAgentThought');
   });
 
   it('cópias repetidas do Habblaud voltam a uma só — mesmo quando é a única mudança (e depois é idempotente)', () => {
