@@ -903,9 +903,9 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] O painel abre pelo shell sem afetar os demais
-- [ ] Gate check passes: `npm run typecheck && npm run build`
-- [ ] Test count: sem remoção
+- [x] O painel abre pelo shell sem afetar os demais
+- [x] Gate check passes: `npm run typecheck && npm run build`
+- [x] Test count: sem remoção
 
 **Tests**: none
 **Gate**: build
