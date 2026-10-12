@@ -806,10 +806,10 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] `GET` lista; `POST run` submete o prompt à sessão-alvo (headless/IDE) (SC-32, SC-33)
-- [ ] Skill inexistente → 404; corpo inválido → 400
-- [ ] Gate check passes: `npm test`
-- [ ] Test count: novo `server/skills/http.test.ts` verde (sem remoção de teste)
+- [x] `GET` lista; `POST run` submete o prompt à sessão-alvo (headless/IDE) (SC-32, SC-33)
+- [x] Skill inexistente → 404; corpo inválido → 400
+- [x] Gate check passes: `npm test`
+- [x] Test count: novo `server/skills/http.test.ts` verde (sem remoção de teste)
 
 **Tests**: integration
 **Gate**: full
