@@ -527,11 +527,11 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] `create()` lança com prompt/modelo/modo; `stop`/`resume` (`--resume`) mantêm a sessão (SC-21, SC-25)
-- [ ] Observabilidade equivalente à IDE via Office (SC-24)
-- [ ] `reconcile()` marca `stopped` tarefa órfã (SC-25); binário ausente → `failed` com erro acionável (SC-26)
-- [ ] Gate check passes: `npx vitest run server/sources/cursor/tasks.test.ts`
-- [ ] Test count: casos create/stop/resume/reconcile/falha verde (sem remoção de teste)
+- [x] `create()` lança com prompt/modelo/modo; `stop`/`resume` (`--resume`) mantêm a sessão (SC-21, SC-25)
+- [x] Observabilidade equivalente à IDE via Office (SC-24)
+- [x] `reconcile()` marca `stopped` tarefa órfã (SC-25); binário ausente → `failed` com erro acionável (SC-26)
+- [x] Gate check passes: `npx vitest run server/sources/cursor/tasks.test.ts`
+- [x] Test count: casos create/stop/resume/reconcile/falha verde (sem remoção de teste)
 
 **Tests**: unit
 **Gate**: quick
