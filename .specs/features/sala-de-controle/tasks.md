@@ -952,9 +952,9 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] Cobre workspace→sala (SC-35), basename colidente→pais (SC-36), subagente herda sala (SC-37), sem workspace→padrão (SC-38), rename persiste (SC-39)
-- [ ] Gate check passes: `npx vitest run server/sources/cursor/source.test.ts`
-- [ ] Test count: casos das 5 ACs verde (sem remoção de teste)
+- [x] Cobre workspace→sala (SC-35), basename colidente→pais (SC-36), subagente herda sala (SC-37), sem workspace→padrão (SC-38), rename persiste (SC-39)
+- [x] Gate check passes: `npx vitest run server/sources/cursor/source.test.ts`
+- [x] Test count: casos das 5 ACs verde (sem remoção de teste)
 
 **Tests**: unit
 **Gate**: quick

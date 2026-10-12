@@ -9,6 +9,7 @@ import { AccountsService } from '../../accounts/service';
 import { setQuiet } from '../../log';
 import { NameStore } from '../../model/names';
 import { Office } from '../../model/office';
+import { RoomAliases } from '../../model/room-aliases';
 import { tempDir } from '../../test/fixtures';
 import { TranscriptHub } from '../transcript-hub';
 import { CursorSource } from './source';
@@ -135,6 +136,38 @@ describe('fonte do Cursor: presença por hooks', () => {
     expect(ctx.hook(ev('preToolUse', { conversation_id: 'c4', tool_name: 'Read', tool_input: { file_path: '/a/b.ts' } }))).toBe(true);
     expect(ctx.agent('cursor:c4')).toMatchObject({ provider: 'cursor', status: 'working', roomId: '/projetos/demo' });
     expect(ctx.agent('cursor:c4')?.activity).toMatchObject({ tool: 'Read', kind: 'read' });
+  });
+
+  it('dois projetos com mesmo basename: desambigua por pai (SC-36)', () => {
+    const ctx = setup();
+    ctx.hook({ hook_event_name: 'sessionStart', conversation_id: 'c1', workspace_roots: ['/projetos/app'] });
+    ctx.hook({ hook_event_name: 'sessionStart', conversation_id: 'c2', workspace_roots: ['/outro/app'] });
+    const snap = ctx.office.commit().snapshot;
+    expect(snap.rooms.map((r) => r.id)).toEqual(['/projetos/app', '/outro/app']);
+    expect(snap.rooms.map((r) => r.name)).toEqual(['projetos/app', 'outro/app']);
+  });
+
+  it('rename da sala persiste via rooms.json (SC-39)', () => {
+    const ctx = setup();
+    ctx.hook(ev('sessionStart', { workspace_roots: ['/projetos/demo'] }));
+    const roomsFile = join(ctx.home.dir, 'rooms.json');
+    // Rename via RoomAliases (simula o POST /api/rooms/rename).
+    const roomAliases = new RoomAliases(roomsFile);
+    roomAliases.set('/projetos/demo', 'Meu Projeto');
+    // Novo Office com o mesmo RoomAliases: o nome persiste.
+    const office2 = new Office({
+      names: new NameStore(null),
+      version: 'teste',
+      startedAt: ctx.now(),
+      accounts: (s) => ctx.accounts.list(s),
+      sources: () => [],
+      accountName: (id) => ctx.accounts.find(id)?.detected.name,
+      now: ctx.now,
+      roomAlias: (path) => roomAliases.get(path),
+    });
+    // Cria a sala no novo Office (chamando ensureRoom via addMain).
+    office2.addMain({ id: 'cursor:test', provider: 'cursor', account: 'cursor', sessionId: 'test', cwd: '/projetos/demo', role: 'Test', startedAt: ctx.now(), status: 'idle' });
+    expect(office2.roomName('/projetos/demo')).toBe('Meu Projeto');
   });
 
   it('beforeShellExecution → shell; afterShellExecution → working (CPOC-10)', () => {
