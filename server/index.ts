@@ -105,8 +105,11 @@ if (codex) agents.add(codex);
 const codexLive: CodexLive | undefined = codex;
 // Eventos dos hooks do Cursor (POST /api/cursor/events, mod/habblaud-cursor/hook.mjs): o Cursor não tem registro local de
 // sessões (lacuna C2), então a fonte existe sempre que HABBLAUD_CURSOR não está desligada e fica inerte sem eventos;
-// ela cria/atualiza o agente Cursor no Office ao receber os hooks (CursorLive).
-const cursor = config.cursor ? new CursorSource({ accounts, office, home: config.home }) : undefined;
+// ela cria/atualiza o agente Cursor no Office ao receber os hooks (CursorLive). A fonte também hospeda o ciclo das
+// tarefas headless (TaskHost): persistência em <dataDir>/tasks.json para reconciliar no reinício (SC-25).
+const cursor = config.cursor
+  ? new CursorSource({ accounts, office, home: config.home, tasks: { file: join(config.dataDir, 'tasks.json'), env: process.env } })
+  : undefined;
 if (cursor) agents.add(cursor);
 const cursorLive: CursorLive | undefined = cursor;
 late.office = office;
@@ -211,6 +214,8 @@ const api = createApiHandler({
   messages: messages ? createMessageRoutes(messages) : undefined,
   codexLive,
   cursorLive,
+  // Tarefas headless: só com bind local e o Cursor ligado (a fonte hospeda o TaskHost); a trava do Host local é do app.ts.
+  tasks: config.terminal ? cursor : undefined,
   stats,
   updates,
 });
@@ -300,6 +305,11 @@ server.listen(config.port, config.host, () => {
   if (office.isDemo()) log.info('   Modo demonstração ligado (agentes simulados misturados aos reais).');
   if (config.terminal) log.info('   Terminal: ligado (acesso só local).');
   else log.info(`   Terminal: desligado (${terminalOffReason(process.env, config.host, config.inDocker)}).`);
+  log.info(
+    `   Tarefas headless (Cursor): ${
+      config.terminal && cursor ? 'ligadas (acesso só local).' : `desligadas (${config.terminal ? 'Cursor desligado' : 'mesma trava do terminal'}).`
+    }`,
+  );
   log.info(timeline ? `   Linha do tempo (timelapse): gravando em ${timelineDir}.` : '   Linha do tempo (timelapse): gravação desligada (HABBLAUD_TIMELINE).');
   log.info(`   Responder pelo escritório: ${config.terminal ? 'ligado (precisa do mod: npm run mod:install; ou do hook antigo: npm run hooks:install)' : 'desligado (mesma trava do terminal)'}.`);
   log.info(
