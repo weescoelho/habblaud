@@ -578,10 +578,10 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] Rotas em `ApiDeps` com sucesso + erro (400/404/403/409) (SC-21)
-- [ ] Parar/retomar refletem na tarefa (SC-25); falha de lançamento vira 4xx acionável (SC-26)
-- [ ] Gate check passes: `npm test`
-- [ ] Test count: `server/http/http.test.ts` verde com os novos casos (sem remoção de teste)
+- [x] Rotas em `ApiDeps` com sucesso + erro (400/404/403/409) (SC-21)
+- [x] Parar/retomar refletem na tarefa (SC-25); falha de lançamento vira 4xx acionável (SC-26)
+- [x] Gate check passes: `npm test`
+- [x] Test count: `server/http/http.test.ts` verde com os novos casos (sem remoção de teste)
 
 **Tests**: integration
 **Gate**: full

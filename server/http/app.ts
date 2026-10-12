@@ -9,6 +9,7 @@ import type { DayStatsService } from '../history/daystats';
 import type { Office } from '../model/office';
 import type { CodexLive } from '../sources/codex/live';
 import type { CursorLive } from '../sources/cursor/live';
+import type { TaskHost, TaskInput, TaskMode } from '../sources/cursor/tasks';
 import type { SessionLookup } from '../sources/source';
 import { isJsonContentType, isLoopbackHost } from './guard';
 import { handleSessionsRoute } from './sessions';
@@ -58,6 +59,11 @@ export interface ApiDeps {
   cursorLive?: CursorLive;
   /** Renomeia a sala (POST /api/rooms/rename {id, name}; vazio volta ao padrão). Devolve o nome em uso, ou undefined se a sala não existe. */
   renameRoom?: (id: string, name: string) => string | undefined;
+  /**
+   * Tarefas headless gerenciadas (/api/tasks*, server/sources/cursor/tasks.ts): cria/lista/para/retoma/exclui. Só
+   * existem com bind local (ServerConfig.terminal); a trava do Host local é conferida aqui antes de chamá-las.
+   */
+  tasks?: TaskHost;
   /** Estatísticas do "Meu dia" (GET /api/stats, http/stats.ts). */
   stats?: DayStatsService;
   /** Verificação de versão nova no GitHub (GET /api/updates, POST /api/updates/check; updates/checker.ts). */
@@ -73,6 +79,36 @@ const TERMINAL_ROUTE = /^\/api\/agents\/([^/]+)\/terminal$/;
 /** PUT|DELETE /api/agents/:id/character: personagem do projeto (ver Office.setCharacter). */
 const CHARACTER_ROUTE = /^\/api\/agents\/([^/]+)\/character$/;
 const NOT_EDITABLE = 'agente não encontrado: só o agente principal de uma sessão aberta tem personagem editável';
+
+/** /api/tasks, /api/tasks/:id e /api/tasks/:id/(stop|resume): ciclo das tarefas headless (ver TaskHost). */
+const TASKS_ROUTE = /^\/api\/tasks(?:\/([^/]+)(?:\/(stop|resume))?)?$/;
+const TASK_MODES: readonly TaskMode[] = ['plan', 'ask', 'agent'];
+const BAD_TASK_BODY = 'esperado {prompt: texto não vazio, cwd: projeto de origem}';
+
+/** Valida e normaliza o corpo de POST /api/tasks (400 acionável em qualquer campo torto). */
+function taskInputOf(body: unknown): TaskInput {
+  const b = body as { prompt?: unknown; cwd?: unknown; mode?: unknown; model?: unknown; label?: unknown; isolated?: unknown; force?: unknown } | null;
+  const prompt = typeof b?.prompt === 'string' ? b.prompt.trim() : '';
+  const cwd = typeof b?.cwd === 'string' ? b.cwd.trim() : '';
+  if (!prompt || !cwd) throw new HttpError(400, BAD_TASK_BODY);
+  let mode: TaskMode | undefined;
+  if (b?.mode !== undefined) {
+    if (typeof b.mode !== 'string' || !TASK_MODES.includes(b.mode as TaskMode)) throw new HttpError(400, 'modo inválido: use plan, ask ou agent');
+    mode = b.mode as TaskMode;
+  }
+  for (const [field, value] of [['isolated', b?.isolated], ['force', b?.force]] as const) {
+    if (value !== undefined && typeof value !== 'boolean') throw new HttpError(400, `esperado {${field}: boolean}`);
+  }
+  return {
+    prompt,
+    cwd,
+    mode,
+    model: typeof b?.model === 'string' ? b.model : undefined,
+    label: typeof b?.label === 'string' ? b.label : undefined,
+    isolated: typeof b?.isolated === 'boolean' ? b.isolated : undefined,
+    force: typeof b?.force === 'boolean' ? b.force : undefined,
+  };
+}
 
 /** Conexão vinda do próprio computador (127.x, ::1 ou ::ffff:127.x). */
 function isLoopbackAddress(addr: string | undefined): boolean {
@@ -230,6 +266,40 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
     sendJson(res, 200, { ok: true });
   };
 
+  const handleTasks = async (req: IncomingMessage, res: ServerResponse, match: RegExpExecArray, method: string) => {
+    const host = deps.tasks!;
+    const rawId = match[1];
+    if (rawId === undefined) {
+      // /api/tasks: lista (GET) ou cria (POST). Ids nunca contêm '/'.
+      if (method !== 'POST') return sendJson(res, 200, { tasks: host.tasks() });
+      const task = await host.createTask(taskInputOf(await readJson(req)));
+      if (task.status === 'failed') return void sendJson(res, 409, { error: task.error ?? 'não consegui lançar a tarefa', task });
+      return void sendJson(res, 201, { task });
+    }
+    let id: string;
+    try {
+      id = decodeURIComponent(rawId);
+    } catch {
+      throw new HttpError(400, 'id inválido');
+    }
+    if (match[2] === 'stop') {
+      const task = host.stopTask(id);
+      if (!task) throw new HttpError(404, 'tarefa não encontrada');
+      return void sendJson(res, 200, { task });
+    }
+    if (match[2] === 'resume') {
+      const task = await host.resumeTask(id);
+      if (!task) throw new HttpError(404, 'tarefa não encontrada');
+      if (task.status === 'failed') throw new HttpError(409, task.error ?? 'não consegui retomar a tarefa');
+      return void sendJson(res, 200, { task });
+    }
+    // /api/tasks/:id (DELETE): remove worktree+branch; `dirty` preserva a tarefa (SC-23).
+    const r = await host.removeTask(id);
+    if (r.removed) return void sendJson(res, 200, { removed: true });
+    if (r.reason === 'missing') throw new HttpError(404, 'tarefa não encontrada');
+    throw new HttpError(409, r.reason === 'dirty' ? 'há alterações não commitadas: a tarefa foi preservada' : 'não consegui remover a tarefa');
+  };
+
   const fail = (res: ServerResponse, err: unknown) => {
     if (res.headersSent) return void res.destroy();
     if (err instanceof HttpError) sendJson(res, err.status, { error: err.message });
@@ -301,6 +371,21 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
           return true;
         }
         terminals.attach(req, res, id);
+      }
+      return true;
+    }
+    const tasksMatch = TASKS_ROUTE.exec(path);
+    if (tasksMatch) {
+      // Tarefas headless lançam processos: a mesma trava do terminal (bind local + Host local).
+      const allow = tasksMatch[1] === undefined ? 'GET, POST' : tasksMatch[2] ? 'POST' : 'DELETE';
+      const allowed = tasksMatch[1] === undefined ? isRead || method === 'POST' : tasksMatch[2] ? method === 'POST' : method === 'DELETE';
+      if (!allowed) methodNotAllowed(res, allow);
+      else if (!deps.tasks) {
+        sendJson(res, 403, { error: 'tarefas headless desligadas: só funcionam com o Habblaud acessível apenas pelo próprio computador' });
+      } else if (!isLoopbackHost(req.headers.host)) {
+        sendJson(res, 403, { error: 'tarefas headless só são gerenciadas pelo próprio computador (http://localhost ou http://127.0.0.1)' });
+      } else {
+        handleTasks(req, res, tasksMatch, method).catch((err) => fail(res, err));
       }
       return true;
     }
