@@ -4,7 +4,8 @@
 //
 // O que o transcript do Cursor traz (mapeado ao vivo, lacuna C1) e que molda as regras abaixo:
 // - uma linha por mensagem: `{"role":"user"|"assistant","message":{"content":[…]}}`, onde cada bloco é `text`
-//   ou `tool_use` (`{"type":"tool_use","name":…,"input":…}`);
+//   ou `tool_use` (`{"type":"tool_use","name":…,"input":…}`); o prompt do usuário vem envolvido em
+//   `<timestamp>`/`<user_query>` — o terminal mostra só o que foi digitado;
 // - `{"type":"turn_ended","status":…}` fecha o turno (sucesso/erro);
 // - NÃO há `tool_result` nem timestamp: por isso o parser não emite entradas `result` e usa `timestamp`/`ts`
 //   quando houver (senão o último conhecido, com `Date.now()` só de reserva). Os ids são por posição da linha
@@ -33,6 +34,24 @@ function toMs(v: unknown): number | undefined {
   if (typeof v !== 'string') return undefined;
   const t = Date.parse(v);
   return Number.isNaN(t) ? undefined : t;
+}
+
+/**
+ * Prompt que o Cursor grava no transcript: o texto digitado vem em `<user_query>`; o envelope
+ * (`<timestamp>`, `<user_info>`…) some. Sem a tag, o texto cru permanece.
+ */
+export function unwrapCursorUserText(raw: string): string {
+  const m = /<user_query>([\s\S]*?)<\/user_query>/.exec(raw);
+  const inner = m?.[1]?.trim();
+  return inner || raw;
+}
+
+/** Horário do envelope (`<timestamp>Monday, Oct 12, 2026, 12:03 PM (UTC-3)</timestamp>`). */
+export function cursorUserEnvelopeAt(raw: string): number | undefined {
+  const m = /<timestamp>([\s\S]*?)<\/timestamp>/.exec(raw);
+  const label = m?.[1]?.trim();
+  if (!label) return undefined;
+  return toMs(label.replace(/\s*\([^)]*\)\s*$/, '').trim());
 }
 
 interface ToolRender {
@@ -131,7 +150,7 @@ class CursorTerminalParser implements TerminalParser {
       const id = `${key}:${i}`;
       switch (b.type) {
         case 'text':
-          if (role === 'user') this.user(id, at, str(b.text) ?? '');
+          if (role === 'user') this.user(id, at, str(b.text) ?? '', ts);
           else if (role === 'assistant') this.assistant(id, at, str(b.text) ?? '');
           return;
         case 'tool_use':
@@ -145,9 +164,11 @@ class CursorTerminalParser implements TerminalParser {
 
   // ---------------------------------------------------------------- entradas
 
-  private user(id: string, at: number, raw: string): void {
-    const text = marked(prepare(raw, TEXT_MAX));
-    if (text) this.emit({ kind: 'user', id: `${id}:u`, at, text });
+  private user(id: string, at: number, raw: string, jsonTs?: number): void {
+    const envelopeAt = jsonTs === undefined ? cursorUserEnvelopeAt(raw) : undefined;
+    if (envelopeAt !== undefined) this.lastAt = envelopeAt;
+    const text = marked(prepare(unwrapCursorUserText(raw), TEXT_MAX));
+    if (text) this.emit({ kind: 'user', id: `${id}:u`, at: envelopeAt ?? at, text });
   }
 
   private assistant(id: string, at: number, raw: string): void {

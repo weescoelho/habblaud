@@ -37,7 +37,6 @@ import { Toasts } from './toasts';
 import { UpdateToaster } from './version';
 import { TopBar } from './topbar';
 import { UpdateBanner } from './update';
-import { SkillsPanel } from './skills';
 import { FreeArea } from './viewport';
 
 /** Relógio dos tempos relativos ("há 5 s"). */
@@ -170,9 +169,6 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
   // "Nova tarefa" (P5 · SC-21): lança uma tarefa headless no projeto escolhido; a tarefa entra na sala como sessão comum.
   const tasks = new TaskLauncher(ctx);
   topbar.addPanelButton(tasks.button);
-  // Painel de skills (P7 · SC-32/SC-33): lista e dispara skills na sessão-alvo.
-  const skills = new SkillsPanel(ctx);
-  topbar.addPanelButton(skills.button);
   // Botão direito numa sala (lista lateral ou escritório): renomear.
   const renamer = new RoomRenamer(ctx);
   ctx.renameRoom = (id, at) => renamer.open(id, at);
@@ -186,7 +182,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
   const scrim = h('div', { class: 'ui-scrim', attrs: { 'aria-hidden': 'true' }, on: { click: () => ctx.togglePanel('sidebar', false) } });
 
   root.classList.add('ui-root');
-  root.append(timelapse.vignette, topbar.el, sidebar.el, scrim, feed.el, drawer.el, terminal.el, mosaic.el, timelapse.el, timelapse.badge, toasts.el, banner.el, update.el, empty.el, tip.el, settings.el, history.el, help.el, tasks.el, skills.el, renamer.el, live, splash.el);
+  root.append(timelapse.vignette, topbar.el, sidebar.el, scrim, feed.el, drawer.el, terminal.el, mosaic.el, timelapse.el, timelapse.badge, toasts.el, banner.el, update.el, empty.el, tip.el, settings.el, history.el, help.el, tasks.el, renamer.el, live, splash.el);
   area = new FreeArea(world, { root, topbar: topbar.el, sidebar: sidebar.el, drawer: drawer.el, feed: feed.el }, () => ({
     sidebar: panels.sidebar,
     feed: panels.feed,
@@ -195,7 +191,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
   }));
   drawer.onLayoutChange = () => applyLayout();
 
-  const components: UiComponent[] = [topbar, sidebar, drawer, terminal, history, feed, toasts, settings, empty, banner, tip, notifier, splash, timelapse, mosaic, sound, day, tasks, skills, updateToaster];
+  const components: UiComponent[] = [topbar, sidebar, drawer, terminal, history, feed, toasts, settings, empty, banner, tip, notifier, splash, timelapse, mosaic, sound, day, tasks, updateToaster];
 
   // ---------------------------------------------------------------- renderização agrupada por quadro
   let rafId = 0;
@@ -247,6 +243,8 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
     // Clique no canvas (ou agente que saiu): a gaveta espera a janela do duplo clique antes de mexer na câmera.
     if (!uiSelecting) area.selectionChangedExternally(prev, sel);
     applyLayout(uiSelecting ? { refocus: false } : {});
+    // Terminal aberto: troca a conversa junto com o agente selecionado (sem fechar a janela).
+    terminal.followSelection(sel);
     invalidate();
   });
   narrowMq?.addEventListener('change', (e) => {
@@ -420,7 +418,7 @@ class TaskLauncher implements UiComponent {
     this.mode.value = 'plan';
     this.model = h('input', { class: 'ui-rename__input', type: 'text', attrs: { placeholder: 'auto', 'aria-label': 'Modelo', spellcheck: 'false' } });
     this.isolated = h('input', { type: 'checkbox', attrs: { 'aria-label': 'Isolar em worktree' } });
-    this.isolated.checked = true;
+    this.isolated.checked = false;
     this.hint = h('p', { class: 'ui-rename__hint' });
     this.submit = h('button', { class: 'ui-btn ui-btn--primary', type: 'submit', text: 'Criar tarefa' });
 

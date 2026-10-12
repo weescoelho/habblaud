@@ -2,18 +2,23 @@
 // sessões conhecido (lacuna C2), então a presença vem SÓ dos hooks. O script de hook manda o stdin do evento para
 // POST /api/cursor/events e a rota repassa para applyHookEvent (CursorLive), que cria/atualiza o agente no Office.
 //
-// Presença: um tracker por conversation_id. Cada evento atualiza lastHookAt; um relógio de ~1 s (poll) remove o
-// agente quando now - lastHookAt > STALE_PRESENCE_MS (o Cursor pode fechar sem sessionEnd, num crash). Um evento
-// novo reabre a sessão. O `transcript_path` que os hooks trazem é guardado por conversa (só quando vem não
-// vazio; nunca limpo por um evento sem ele) e vira o terminal via transcriptPathOf/terminalParser.
+// Presença: um tracker por conversation_id. O `sessionStart` só registra a conversa — abrir o chat não põe
+// boneco no escritório. O agente entra na sala do projeto no primeiro evento de trabalho, e só quando o evento
+// já disse o workspace (`workspace_roots` ou `cwd`). Sem isso, não inventamos a sala "cursor". Cada evento
+// atualiza lastHookAt; um relógio de ~1 s (poll) remove o agente quando now - lastHookAt > STALE_PRESENCE_MS
+// (o Cursor pode fechar sem sessionEnd, num crash). Um evento novo reabre a sessão. O `transcript_path` que os
+// hooks trazem é guardado por conversa (só quando vem não vazio; nunca limpo por um evento sem ele) e vira o
+// terminal via transcriptPathOf/terminalParser.
 //
 // Transcript: o pump de eventos do GitHub (tool_use Shell com git/gh) lê pelo TranscriptHub — o mesmo leitor
 // compartilhado dos terminais, uma assinatura por agente (SC-05) — e reage ao vivo (SC-02); o poll força um
 // ciclo como fallback (SC-04).
 //
 // Subagentes: `subagentStart`/`subagentStop` formam um par por `subagent_id`, ligado ao agente pai. O sub tem
-// transcript próprio (`agent-transcripts/<pai>/subagents/<child>.jsonl`); o id da conversa dele
-// (`child_conversation_id`) só chega no Stop, então o terminal do sub resolve no Stop e sobrevive à entrega.
+// transcript próprio ao lado do pai (`dirname(transcript do pai)/subagents/<subagent_id>.jsonl`). O Start grava
+// esse caminho assim que o pai já tem `transcriptPath`, mesmo antes do arquivo existir, para o terminal
+// acompanhar a escrita. O Stop corrige se achar outro (`agent_transcript_path`, depois o arquivo ao lado do pai
+// com `child_conversation_id`, depois varredura) e não apaga o tracker: o terminal já entregue ainda precisa dele.
 //
 // Status: aplicado por bordas (decide), a informação mais nova vence (statusAt): um evento atrasado não regride.
 import { existsSync, readdirSync } from 'node:fs';
@@ -37,7 +42,7 @@ import { TaskManager, type TaskHost, type TaskInput, type TaskManagerOptions, ty
 
 /** Sem evento de hook por este tempo, a sessão é dada como encerrada (crash sem `sessionEnd`). */
 export const STALE_PRESENCE_MS = 5 * 60_000;
-/** Sala padrão quando o evento não diz o projeto (sem `workspace_roots` nem `cwd`). */
+/** Identidade quando o evento não traz `conversation_id`. Não é uma sala: sem workspace o agente não entra. */
 export const DEFAULT_ROOM = 'cursor';
 const MAIN_ROLE = 'Agente principal (Cursor)';
 const SUB_ROLE = 'Subagente (Cursor)';
@@ -108,7 +113,7 @@ interface CursorTracker {
   inOffice: boolean;
   /** O subagente já entregou (`done`). */
   subDone?: boolean;
-  /** Arquivo do transcript da conversa (só gravado quando um evento traz caminho não vazio; nunca limpo). */
+  /** Arquivo do transcript. No principal, só quando um evento traz caminho não vazio. No sub, o Start grava o previsto. Nunca limpo. */
   transcriptPath?: string;
   /** Assinatura do hub no transcript da conversa (eventos do GitHub), uma por agente. */
   sub?: HubSubscription;
@@ -324,6 +329,8 @@ export class CursorSource implements AgentSource, CursorLive, TaskHost {
       this.trackers.set(key, t);
     }
     if (!t.cwd) t.cwd = event.workspaceRoot ?? event.cwd;
+    // Abrir a conversa não põe ninguém no escritório. O boneco entra no primeiro evento de trabalho.
+    if (event.name !== 'sessionStart') this.reconcile(t);
     // O caminho do transcript é estável por conversa: grava quando vem não vazio e nunca limpa (eventos
     // parciais como beforeReadFile trazem `null`, que não pode apagar um caminho bom).
     if (event.transcriptPath) t.transcriptPath = event.transcriptPath;
@@ -332,7 +339,6 @@ export class CursorSource implements AgentSource, CursorLive, TaskHost {
       t.stats.tokensIn += event.tokens.input + event.tokens.cacheRead + event.tokens.cacheWrite;
       t.stats.tokensOut += event.tokens.output;
     }
-    this.reconcile(t);
     this.ensureSub(t);
     if (!t.inOffice) return true;
 
@@ -354,10 +360,11 @@ export class CursorSource implements AgentSource, CursorLive, TaskHost {
     const now = this.now();
 
     if (event.name === 'subagentStop') {
-      // Entrega o sub do par; um Stop sem Start visto antes é no-op. O Stop é quem traz a correlação
-      // (`child_conversation_id`) e, às vezes, o `agent_transcript_path`: resolve o transcript do sub ANTES
-      // de entregar. O tracker NÃO é apagado — o terminal do sub (agora `done`, na janela de graça do Office)
-      // ainda precisa de `transcriptPathOf`. O relógio de presença o remove depois, como a qualquer agente.
+      // Entrega o sub do par; um Stop sem Start visto antes é no-op. O Stop corrige o caminho previsto no
+      // Start quando acha outro (`agent_transcript_path` > arquivo ao lado do pai com `child_conversation_id`
+      // > varredura). Sem achar, o caminho do Start fica. O tracker NÃO é apagado — o terminal do sub (agora
+      // `done`, na janela de graça do Office) ainda precisa de `transcriptPathOf`. O relógio de presença o
+      // remove depois, como a qualquer agente.
       const t = this.trackers.get(key);
       if (t) {
         const path = this.subTranscriptPath(t, event.childConversationId, event.agentTranscriptPath);
@@ -394,6 +401,12 @@ export class CursorSource implements AgentSource, CursorLive, TaskHost {
       };
       this.trackers.set(key, t);
     }
+    // O arquivo nasce durante o trabalho, nomeado pelo subagent_id, ao lado do transcript do pai. Grava o
+    // caminho agora (mesmo que ainda não exista) para o terminal passar a ler quando ele aparecer. O Stop
+    // troca se a correlação apontar para outro arquivo.
+    if (parent.transcriptPath) {
+      t.transcriptPath = join(dirname(parent.transcriptPath), 'subagents', `${subagentId}.jsonl`);
+    }
     this.opts.office.addSub({
       id: key,
       parentId,
@@ -409,13 +422,13 @@ export class CursorSource implements AgentSource, CursorLive, TaskHost {
   }
 
   /**
-   * Transcript próprio do subagente. O `subagentStart` não traz o id da conversa do sub; só o `subagentStop`
-   * traz `child_conversation_id` (e, quando a IDE manda, `agent_transcript_path`). Ordem de resolução:
+   * Correção do transcript do subagente no `subagentStop`. O Start já gravou o caminho previsto
+   * (`<pai>/subagents/<subagent_id>.jsonl`); aqui só substitui quando acha outro de verdade:
    *   1. `agent_transcript_path`, quando presente (autoritativo);
-   *   2. ao lado do transcript do pai: `<pai>/subagents/<child>.jsonl` (quando o pai já tem caminho conhecido);
+   *   2. ao lado do transcript do pai: `<pai>/subagents/<child>.jsonl`, se o arquivo existe;
    *   3. varredura do diretório do Cursor pelo `child` (o id é único): `<dir>/projects/<slug>/agent-transcripts/
    *      <conv>/subagents/<child>.jsonl`.
-   * Sem nada disso, degrada (`undefined`): o terminal mostra vazio em vez de um caminho falso.
+   * Sem nada disso, devolve `undefined` e o caller mantém o caminho do Start.
    */
   private subTranscriptPath(t: CursorTracker, childId?: string, hint?: string): string | undefined {
     if (hint) return hint;
@@ -448,16 +461,19 @@ export class CursorSource implements AgentSource, CursorLive, TaskHost {
     return undefined;
   }
 
-  /** Traz o agente para o escritório (sala `workspace_roots[0]`/`cwd` ou a padrão) com o status atual. */
+  /**
+   * Traz o agente para o escritório na sala do projeto (`workspace_roots[0]` ou `cwd`). Sem projeto conhecido
+   * não entra: a sala "cursor" era um boneco ocioso aberto junto com a conversa.
+   */
   private reconcile(t: CursorTracker): void {
-    if (t.inOffice) return;
+    if (t.inOffice || !t.cwd) return;
     const office = this.opts.office;
     office.addMain({
       id: t.key,
       provider: 'cursor',
       account: t.account,
       sessionId: t.conversationId,
-      cwd: t.cwd ?? DEFAULT_ROOM,
+      cwd: t.cwd,
       role: MAIN_ROLE,
       startedAt: t.startedAt,
       status: t.status,

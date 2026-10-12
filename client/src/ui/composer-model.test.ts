@@ -113,12 +113,10 @@ describe('caixa de mensagem (peças puras)', () => {
     expect(composerMode(codex({ status: 'offline' }), ON)).toEqual({ kind: 'off', text: 'Sessão encerrada' });
   });
 
-  it('Cursor: com o canal da IDE permite enviar; sem ele, degrada com CURSOR_OFF_TEXT (SC-27, SC-30)', () => {
+  it('Cursor: a caixa fica fechada, mesmo com canMessage', () => {
     const cursor = (over: Partial<AgentInfo> = {}) => agent({ provider: 'cursor', ...over });
-    // Com o canal (o hook da IDE conectado), o composer volta a funcionar como no Claude Code (SC-27).
-    expect(composerMode(cursor(), ON)).toEqual({ kind: 'ready' });
-    for (const status of ['working', 'waiting', 'shell'] as const) expect(composerMode(cursor({ status }), ON).kind).toBe('ready');
-    // Sem canal: off com o texto do Cursor (SC-30), sem a dica de plugin do Claude.
+    expect(composerMode(cursor(), ON)).toEqual({ kind: 'off', text: CURSOR_OFF_TEXT });
+    for (const status of ['working', 'waiting', 'shell'] as const) expect(composerMode(cursor({ status }), ON)).toEqual({ kind: 'off', text: CURSOR_OFF_TEXT });
     expect(composerMode(cursor({ canMessage: undefined }), ON)).toEqual({ kind: 'off', text: CURSOR_OFF_TEXT });
     expect(CURSOR_OFF_TEXT).toBe('Para responder, use o Cursor');
     // Recurso desligado: também off com o texto do Cursor (não fala do terminal do Claude Code).
@@ -137,7 +135,7 @@ describe('caixa de mensagem (peças puras)', () => {
     expect(sendStatusText({ phase: 'queued', at: 0 }, 0, 'cursor')).toBe('Na fila: entregue ao fim do turno do Cursor…');
     expect(sendStatusText({ phase: 'delivered', at: 0 }, 1_000, 'cursor')).toBe('Entregue ✓ ao fim do turno do Cursor');
     expect(sendStatusText({ phase: 'delivered', at: 0 }, DELIVERED_SHOW_MS, 'cursor')).toBe('');
-    expect(composerTip('cursor')).toMatch(/quando o Cursor terminar o turno/);
+    expect(composerTip('cursor')).toMatch(/Responda na conversa do Cursor/);
     expect(timeoutError('cursor')).toBe(CURSOR_TIMEOUT_ERROR);
     // O Claude Code continua como antes.
     expect(sendStatusText({ phase: 'queued', at: 0 }, 0, 'claude')).toBe('Na fila: esperando a sessão buscar a mensagem…');

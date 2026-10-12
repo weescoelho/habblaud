@@ -27,13 +27,13 @@ export interface TaskForm {
   cwd: string;
   mode: TaskMode;
   model: string;
-  /** Isolar em worktree+branch; padrão true. */
+  /** Isolar em worktree+branch. Padrão false. */
   isolated: boolean;
 }
 
 /** Formulário vazio (modo `plan`, isolada). */
 export function emptyTaskForm(cwd = ''): TaskForm {
-  return { prompt: '', cwd, mode: 'plan', model: '', isolated: true };
+  return { prompt: '', cwd, mode: 'plan', model: '', isolated: false };
 }
 
 /** Corpo de `POST /api/tasks` a partir do formulário; undefined quando falta o prompt ou o projeto. */

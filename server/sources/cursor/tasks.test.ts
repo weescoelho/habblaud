@@ -233,7 +233,7 @@ describe('TaskManager.create', () => {
   it('isola num worktree+branch e roda o processo lá dentro (SC-22)', async () => {
     current = makeHarness();
     const h = current;
-    const info = await h.manager.create({ prompt: 'x', cwd: '/projetos/alfa' });
+    const info = await h.manager.create({ prompt: 'x', cwd: '/projetos/alfa', isolated: true });
 
     const expectedDir = join(h.root, 'worktrees', info.id);
     expect(info.worktree).toBe(expectedDir);
@@ -268,7 +268,7 @@ describe('TaskManager.create', () => {
 
   it('falha de worktree marca failed com o erro do git (SC-26)', async () => {
     current = makeHarness({ createFail: 'fatal: not a git repository' });
-    const info = await current.manager.create({ prompt: 'x', cwd: '/projetos/alfa' });
+    const info = await current.manager.create({ prompt: 'x', cwd: '/projetos/alfa', isolated: true });
 
     expect(info.status).toBe('failed');
     expect(info.error).toContain('not a git repository');
@@ -387,7 +387,7 @@ describe('TaskManager.remove', () => {
   it('remove limpo apaga worktree/branch e tira o agente do escritório (SC-23)', async () => {
     current = makeHarness();
     const h = current;
-    const info = await h.manager.create({ prompt: 'x', cwd: '/projetos/alfa' });
+    const info = await h.manager.create({ prompt: 'x', cwd: '/projetos/alfa', isolated: true });
 
     const r = await h.manager.remove(info.id);
     expect(r).toEqual({ removed: true });
@@ -398,7 +398,7 @@ describe('TaskManager.remove', () => {
   it('com alterações não commitadas, preserva e sinaliza conflito (SC-23)', async () => {
     current = makeHarness({ dirty: true });
     const h = current;
-    const info = await h.manager.create({ prompt: 'x', cwd: '/projetos/alfa' });
+    const info = await h.manager.create({ prompt: 'x', cwd: '/projetos/alfa', isolated: true });
 
     const r = await h.manager.remove(info.id);
     expect(r).toEqual({ removed: false, reason: 'dirty' });

@@ -50,9 +50,7 @@ export const ERR_CODEX_SLOW = 'o Codex demorou demais com as mensagens anteriore
 export const ERR_CODEX_NOT_CONFIRMED = 'o auxiliar do Codex não confirmou a entrega';
 export const ERR_CODEX_HOME = 'a pasta da conta do Codex deste agente é desconhecida';
 export const ERR_CODEX_REFUSED = 'o codex queue não aceitou a mensagem';
-export const ERR_CURSOR_UNAVAILABLE = 'o hook do Cursor não está conectado: rode npm run cursor:install (hooks da IDE)';
-/** Entregas automáticas consecutivas ao Cursor sem um novo prompt do usuário: para e exige ação (SC-29). */
-export const CURSOR_FOLLOWUP_MAX = 5;
+export const ERR_CURSOR_UNAVAILABLE = 'o Cursor não recebe mensagens pelo escritório: responda na conversa';
 
 const ERROR_MAX = 300;
 const ID_MAX = 300;
@@ -121,7 +119,7 @@ interface Entry {
   demo?: boolean;
   /** Mensagem a um agente do Codex: sai pelo entregador do Codex ('node' = o servidor rodou; 'bridge' = o auxiliar). */
   codex?: true;
-  /** Mensagem a um agente do Cursor: sai pelo hook da IDE (`stop` → followup_message), nunca pelo plugin. */
+  /** Mensagem antiga marcada como Cursor. O escritório não entrega mais para esse provedor. */
   cursor?: true;
   via?: 'node' | 'bridge';
   /** Falhou por falta de confirmação: uma confirmação atrasada ainda corrige a situação. */
@@ -151,10 +149,10 @@ const isFinal = (e: Entry) => e.msg.status === 'delivered' || e.msg.status === '
  */
 function unavailableReason(a: AgentInfo, reachable: boolean): string | undefined {
   if (a.kind !== 'main') return 'subagentes não recebem mensagens: mande para o agente principal';
+  if (a.provider === 'cursor') return ERR_CURSOR_UNAVAILABLE;
   if (!present(a)) return 'o agente já saiu do escritório';
   if (!reachable) {
     if (a.provider === 'codex') return ERR_CODEX_UNAVAILABLE;
-    if (a.provider === 'cursor') return ERR_CURSOR_UNAVAILABLE;
     return 'a sessão não está com o plugin habblaud-mensagens conectado (npm run mod:install)';
   }
   return undefined;
@@ -190,8 +188,6 @@ export class MessageRegistry {
   private seen = new Map<string, number>();
   /** Última vez que o auxiliar do Codex no host buscou mensagens. */
   private bridgeAt?: number;
-  /** Entregas automáticas consecutivas ao Cursor por agente, sem um novo prompt do usuário (SC-29). */
-  private cursorAuto = new Map<string, number>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private seq = 0;
   private readonly now: () => number;
@@ -326,41 +322,13 @@ export class MessageRegistry {
   }
 
   /**
-   * Rodada do hook do Cursor (POST /api/cursor/inbox): marca a presença da conversa e, no `stop`, entrega UMA
-   * mensagem da fila como `followup_message` (o único ponto em que o Cursor aceita texto, ao fim do turno). O
-   * `beforeSubmitPrompt` (o usuário respondeu) zera a trava de auto-followups (SC-29); os demais eventos só marcam a
-   * presença. A entrega é idempotente por `id` (SC-31): a mensagem sai de `queued` e não volta. Corpo inválido: lança.
+   * POST /api/cursor/inbox. Não entrega mensagem e não marca presença: injetar texto no `stop` travava a IDE e
+   * não entrava na conversa. Corpo inválido ainda lança, para o hook antigo não confundir erro com sucesso.
    */
   cursorPoll(raw: unknown): { message?: InboxMessage; locked?: boolean } {
     const r = rec(raw);
     const session = shortStr(r?.session, ID_MAX);
     if (!r || !session) throw new InvalidRequest('esperado {session, event?}');
-    const event = shortStr(r.event, ID_MAX);
-    const agent = this.opts.office
-      .list()
-      .find((a) => a.kind === 'main' && a.provider === 'cursor' && a.sessionId === session && present(a));
-    if (!agent) return {};
-    const now = this.now();
-    const was = this.canMessage(agent.id);
-    this.seen.set(agent.id, now);
-    // A presença do Cursor vem do hook: só a transição mexe no snapshot (o hook chama a caixa a cada evento).
-    if (!was) this.opts.office.markDirty();
-    // O usuário respondeu (mandou um prompt na IDE): a trava de auto-followups volta a zero.
-    if (event === 'beforeSubmitPrompt') {
-      this.cursorAuto.delete(agent.id);
-      return {};
-    }
-    // Só no fim do turno o Cursor aceita a mensagem; os demais eventos só marcam a presença.
-    if (event !== 'stop') return {};
-    if ((this.cursorAuto.get(agent.id) ?? 0) >= CURSOR_FOLLOWUP_MAX) return { locked: true };
-    for (const e of this.messages.values()) {
-      if (!e.cursor || e.msg.agentId !== agent.id || e.msg.status !== 'queued') continue;
-      const text = e.text;
-      // O hook entrega a mensagem no fim do turno: ela entrou na sessão agora.
-      this.finish(e, 'delivered', now);
-      this.cursorAuto.set(agent.id, (this.cursorAuto.get(agent.id) ?? 0) + 1);
-      return { message: { id: e.msg.id, text } };
-    }
     return {};
   }
 

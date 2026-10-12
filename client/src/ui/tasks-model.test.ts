@@ -35,8 +35,8 @@ function recorder(reply: TasksResponse | ((path: string) => TasksResponse)): { f
 
 describe('formulário da tarefa (montagem)', () => {
   it('nasce vazio: modo plan e isolada (SC-21)', () => {
-    expect(emptyTaskForm()).toEqual({ prompt: '', cwd: '', mode: 'plan', model: '', isolated: true });
-    expect(emptyTaskForm('/p/loja')).toMatchObject({ cwd: '/p/loja', mode: 'plan', isolated: true });
+    expect(emptyTaskForm()).toEqual({ prompt: '', cwd: '', mode: 'plan', model: '', isolated: false });
+    expect(emptyTaskForm('/p/loja')).toMatchObject({ cwd: '/p/loja', mode: 'plan', isolated: false });
     expect(TASK_MODE_LABEL).toEqual({ plan: 'Planejar', ask: 'Perguntar', agent: 'Executar' });
   });
 

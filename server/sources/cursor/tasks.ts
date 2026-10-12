@@ -1,6 +1,7 @@
 // Tarefas headless gerenciadas (P5 · SC-21/SC-24/SC-25/SC-26): o escritório abre um `cursor-agent` em modo
-// headless (`-p <prompt> --output-format stream-json --stream-partial-output`), isolado (por padrão) num
-// worktree+branch por tarefa, e acompanha a saída normalizada (`stream.ts`) como uma sessão comum do Office.
+// headless (`-p <prompt> --output-format stream-json --stream-partial-output`). O worktree+branch só entra
+// quando a tarefa pede isolamento; o padrão roda no projeto, para não abrir um checkout a cada lançamento.
+// A saída normalizada (`stream.ts`) aparece como uma sessão comum do Office.
 //
 // Contrato do lote:
 // - `create()` LANÇA o processo (não confunde com "throw"): monta a linha de comando, faz `spawn`, grava o
@@ -45,7 +46,7 @@ export interface TaskInput {
   model?: string;
   /** Projeto de origem (a sala onde a tarefa aparece). */
   cwd: string;
-  /** Isolar em worktree+branch; padrão `true`. */
+  /** Isolar em worktree+branch. Padrão `false`: o checkout extra trava o git quando várias tarefas abrem juntas. */
   isolated?: boolean;
   /** Executar forçado (`--trust --force`): opt-in explícito por tarefa; padrão `false`. */
   force?: boolean;
@@ -264,7 +265,7 @@ export class TaskManager {
       model: input.model,
       force: !!input.force,
       cwd,
-      isolated: input.isolated !== false,
+      isolated: input.isolated === true,
       transcriptPath: join(this.dir, `${id}.jsonl`),
       buffer: '',
       seq: 0,
@@ -514,7 +515,7 @@ export class TaskManager {
         model: stored.model,
         force: !!stored.force,
         cwd: stored.cwd,
-        isolated: stored.isolated !== false,
+        isolated: stored.isolated === true,
         worktree,
         transcriptPath: typeof stored.transcriptPath === 'string' ? stored.transcriptPath : join(this.dir, `${info.id}.jsonl`),
         buffer: '',

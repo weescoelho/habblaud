@@ -2,8 +2,8 @@
 // por que não), o que a tecla Enter faz, a linha de situação de cada envio e o ritmo da consulta da entrega.
 // No Codex a mensagem entra na fila da sessão (`codex queue`) e vira prompt quando ela fica ociosa: "Entregue" diz
 // isso; sem quem entregue (no Docker, o auxiliar do host), a dica é a do `npm run codex:bridge`.
-// No Cursor (P6) a mensagem entra na conversa ao fim do turno atual (`stop.followup_message`): "na fila" até lá e
-// "entregue" quando o turno termina; sem o canal (o hook da IDE), a caixa degrada com o texto do Cursor (SC-30).
+// O Cursor não recebe mensagem pelo escritório: injetar texto no fim do turno travava a IDE e não entrava na
+// conversa. A caixa fica oculta e o texto manda responder no Cursor.
 import { MESSAGE_MAX } from '../../../shared/messages';
 import type { AgentInfo, OutboxStatus, Provider } from '../../../shared/types';
 
@@ -11,7 +11,7 @@ import type { AgentInfo, OutboxStatus, Provider } from '../../../shared/types';
 export const PLUGIN_HINT = 'Para mandar mensagens daqui: npm run mod:install (plugin habblaud-mensagens)';
 /** A mesma dica para um agente do Codex sem entregador (no modo Node o próprio servidor entrega). */
 export const CODEX_BRIDGE_HINT = 'Para mandar mensagens ao Codex: com o Habblaud no Docker, deixe npm run codex:bridge rodando; no modo Node funciona sozinho';
-/** Sem o canal (o hook da IDE não conectado), a caixa do Cursor degrada com este texto (SC-30). */
+/** A caixa do Cursor fica fechada: a resposta é na conversa da IDE. */
 export const CURSOR_OFF_TEXT = 'Para responder, use o Cursor';
 
 /**
@@ -34,20 +34,18 @@ export function composerMode(agent: AgentInfo | undefined, env: ComposerEnv): Co
   if (env.replaying) return { kind: 'off', text: 'Sem mensagens no timelapse: o escritório mostrado é o de outro momento' };
   if (agent?.kind === 'sub') return { kind: 'off', text: 'Subagentes não recebem mensagens: escreva para o agente principal' };
   if (!agent || agent.status === 'offline' || agent.status === 'done') return { kind: 'off', text: 'Sessão encerrada' };
-  // O Cursor (P6) tem canal próprio (o hook da IDE): com ele, a caixa funciona como no Claude Code; sem ele, degrada
-  // com o texto do Cursor (SC-30), em vez da dica de plugin do Claude. A guarda fica depois dos estados mais
-  // específicos (replay/sub/sessão encerrada) e não toca em claude/codex.
-  const cursor = agent.provider === 'cursor';
+  // O Cursor não tem entrega. A guarda fica depois dos estados mais específicos (replay/sub/sessão encerrada).
+  if (agent.provider === 'cursor') return { kind: 'off', text: CURSOR_OFF_TEXT };
   const codex = agent.provider === 'codex';
-  if (!env.enabled) return { kind: 'off', text: cursor ? CURSOR_OFF_TEXT : codex ? 'Para responder, use o Codex' : 'Para responder, use o terminal do Claude Code' };
+  if (!env.enabled) return { kind: 'off', text: codex ? 'Para responder, use o Codex' : 'Para responder, use o terminal do Claude Code' };
   if (!env.local) return { kind: 'off', text: 'Para mandar mensagens por aqui, abra o Habblaud por http://localhost (ou 127.0.0.1)' };
-  if (!agent.canMessage) return cursor ? { kind: 'off', text: CURSOR_OFF_TEXT } : { kind: 'hint', text: codex ? CODEX_BRIDGE_HINT : PLUGIN_HINT };
+  if (!agent.canMessage) return { kind: 'hint', text: codex ? CODEX_BRIDGE_HINT : PLUGIN_HINT };
   return { kind: 'ready' };
 }
 
 /** Dica embaixo da caixa (gaveta): como a mensagem entra na sessão. */
 export function composerTip(provider: Provider = 'claude'): string {
-  if (provider === 'cursor') return 'Entra na conversa quando o Cursor terminar o turno atual. Enter manda; Shift+Enter quebra a linha.';
+  if (provider === 'cursor') return 'Responda na conversa do Cursor. O escritório não envia mensagem para essa sessão.';
   return provider === 'codex'
     ? 'Entra na fila da sessão e vira o próximo prompt quando o Codex terminar o que está fazendo. Enter manda; Shift+Enter quebra a linha.'
     : 'Entra na sessão como se você tivesse digitado. Enter manda; Shift+Enter quebra a linha.';
@@ -105,8 +103,7 @@ export function sendStatusText(s: SendState | undefined, now: number, provider: 
       return 'Entregando à sessão…';
     case 'delivered':
       // Entregue = entrou na sessão ou na fila dela (com o agente ocupado, só entra quando ele terminar o turno). No
-      // Codex é sempre a fila: o dono da sessão a consulta a cada ~10 s e só a usa com a sessão ociosa. No Cursor é o
-      // fim do turno: o hook da IDE devolve a mensagem como `followup_message`.
+      // Codex é sempre a fila: o dono da sessão a consulta a cada ~10 s e só a usa com a sessão ociosa.
       if (now - s.at >= DELIVERED_SHOW_MS) return '';
       if (cursor) return 'Entregue ✓ ao fim do turno do Cursor';
       return codex

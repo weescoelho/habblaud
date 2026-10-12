@@ -47,11 +47,6 @@ export interface ApiDeps {
    */
   messages?: (req: IncomingMessage, res: ServerResponse, path: string) => void;
   /**
-   * Rotas de skills (/api/skills, /api/skills/run, server/skills/http.ts). Seguem a mesma trava (Host local) e só
-   * são chamadas quando o recurso está ligado (bind local, por convenção com o terminal).
-   */
-  skills?: (req: IncomingMessage, res: ServerResponse, path: string) => void;
-  /**
    * Fonte do Codex ao vivo: recebe os eventos dos hooks do Codex (POST /api/codex/events, server/codex/http.ts). Sem
    * ela a rota responde {ok: false}. Só com Host local e, fora do Docker, conexão pelo loopback (os eventos só observam:
    * não dependem da trava do terminal).
@@ -458,17 +453,6 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
         sendJson(res, 403, { error: 'mensagens só são mandadas pelo próprio computador (http://localhost ou http://127.0.0.1)' });
       } else {
         deps.messages(req, res, path);
-      }
-      return true;
-    }
-    if (path === '/api/skills' || path.startsWith('/api/skills/')) {
-      // Skills: seguem a mesma trava do terminal (bind local + Host local) por consistência com outros recursos locais.
-      if (!deps.skills) {
-        sendJson(res, 403, { error: 'skills desligadas: só funcionam com o Habblaud acessível apenas pelo próprio computador' });
-      } else if (!isLoopbackHost(req.headers.host)) {
-        sendJson(res, 403, { error: 'skills só são usadas pelo próprio computador (http://localhost ou http://127.0.0.1)' });
-      } else {
-        deps.skills(req, res, path);
       }
       return true;
     }

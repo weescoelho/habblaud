@@ -5,8 +5,7 @@
 //   GET  /api/messages/:id      (página)  situação da mensagem: 200 OutboxMessage | 404
 //   POST /api/mod/inbox         (plugin)  {session, account?}: 200 {messages: InboxMessage[]} (e marca a presença)
 //   POST /api/mod/inbox/ack     (plugin)  {session, results: [{id, ok, error?}]}: 200 {ok: true}
-//   POST /api/cursor/inbox      (hook)    {session, event?}: 200 {followup_message} | {locked: true} | {} (entrega no
-//                                         fim do turno; marca a presença e zera a trava de auto-followups no prompt)
+//   POST /api/cursor/inbox      (hook antigo) {session, event?}: 200 {} (não entrega; o followup no fim do turno saiu)
 //   POST /api/codex/bridge/poll (auxiliar do Codex no host, npm run codex:bridge)
 //                                         {}: 200 {messages: [{id, account, codexHome, thread, text}]} (marca a presença)
 //   POST /api/codex/bridge/ack  (auxiliar) {results: [{id, ok, error?}]}: 200 {ok: true}
@@ -51,12 +50,9 @@ export function createMessageRoutes(registry: MessageRegistry): (req: IncomingMe
     sendJson(res, 200, { ok: true });
   };
 
-  // Caixa do Cursor: o hook da IDE busca no fim do turno (a mensagem vira `followup_message`). No `stop` a entrega
-  // é confirmada na hora (o hook só entrega o que recebe); sem mensagem, vazio; com a trava ativa, `locked`.
+  // Caixa do Cursor: o hook antigo ainda pergunta, mas a resposta é sempre vazia. Não há followup no fim do turno.
   const cursorInbox = async (req: IncomingMessage, res: ServerResponse) => {
-    const r = registry.cursorPoll(await readJson(req));
-    if (r.message) return sendJson(res, 200, { followup_message: r.message.text });
-    if (r.locked) return sendJson(res, 200, { locked: true });
+    registry.cursorPoll(await readJson(req));
     sendJson(res, 200, {});
   };
 

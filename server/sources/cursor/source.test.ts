@@ -91,9 +91,13 @@ function fakeTasks(dir: string, opts: { file?: string } = {}): Omit<TaskManagerO
 }
 
 describe('fonte do Cursor: presença por hooks', () => {
-  it('sessionStart cria o agente na sala de workspace_roots[0]; preToolUse trabalha; stop para; sessionEnd fecha', () => {
+  it('sessionStart não cria o agente; o primeiro trabalho entra na sala do projeto', () => {
     const ctx = setup();
     expect(ctx.hook(ev('sessionStart', { workspace_roots: ['/projetos/demo'] }))).toBe(true);
+    expect(ctx.agent()).toBeUndefined();
+    expect(ctx.office.commit().snapshot.rooms).toEqual([]);
+
+    expect(ctx.hook(ev('preToolUse', { tool_name: 'Shell', tool_input: { command: 'ls -la' } }))).toBe(true);
     expect(ctx.agent()).toMatchObject({
       kind: 'main',
       provider: 'cursor',
@@ -101,11 +105,9 @@ describe('fonte do Cursor: presença por hooks', () => {
       sessionId: 'c1',
       roomId: '/projetos/demo',
       role: 'Agente principal (Cursor)',
-      status: 'idle',
+      status: 'working',
     });
     expect(ctx.office.commit().snapshot.rooms.map((r) => r.id)).toEqual(['/projetos/demo']);
-
-    expect(ctx.hook(ev('preToolUse', { tool_name: 'Shell', tool_input: { command: 'ls -la' } }))).toBe(true);
     const a = ctx.agent()!;
     expect(a.status).toBe('working');
     expect(a.activity).toMatchObject({ tool: 'Bash' });
@@ -119,16 +121,20 @@ describe('fonte do Cursor: presença por hooks', () => {
     expect(ctx.notices.some((n) => n.includes('encerrou'))).toBe(true);
   });
 
-  it('sem workspace_roots: usa o cwd do evento', () => {
+  it('sem workspace_roots: o trabalho usa o cwd do evento', () => {
     const ctx = setup();
     expect(ctx.hook({ hook_event_name: 'sessionStart', conversation_id: 'c2', cwd: '/projetos/api' })).toBe(true);
-    expect(ctx.agent('cursor:c2')).toMatchObject({ roomId: '/projetos/api', status: 'idle' });
+    expect(ctx.agent('cursor:c2')).toBeUndefined();
+    expect(ctx.hook({ hook_event_name: 'beforeSubmitPrompt', conversation_id: 'c2', cwd: '/projetos/api' })).toBe(true);
+    expect(ctx.agent('cursor:c2')).toMatchObject({ roomId: '/projetos/api', status: 'working' });
   });
 
-  it('sem workspace_roots nem cwd: entra na sala padrão sem falhar', () => {
+  it('sem workspace_roots nem cwd: não inventa a sala cursor', () => {
     const ctx = setup();
     expect(ctx.hook({ hook_event_name: 'sessionStart', conversation_id: 'c3' })).toBe(true);
-    expect(ctx.agent('cursor:c3')).toMatchObject({ roomId: 'cursor', status: 'idle' });
+    expect(ctx.hook({ hook_event_name: 'beforeSubmitPrompt', conversation_id: 'c3' })).toBe(true);
+    expect(ctx.agent('cursor:c3')).toBeUndefined();
+    expect(ctx.office.commit().snapshot.rooms).toEqual([]);
   });
 
   it('preToolUse sem sessionStart cria o agente e o traz para o escritório', () => {
@@ -140,8 +146,8 @@ describe('fonte do Cursor: presença por hooks', () => {
 
   it('dois projetos com mesmo basename: desambigua por pai (SC-36)', () => {
     const ctx = setup();
-    ctx.hook({ hook_event_name: 'sessionStart', conversation_id: 'c1', workspace_roots: ['/projetos/app'] });
-    ctx.hook({ hook_event_name: 'sessionStart', conversation_id: 'c2', workspace_roots: ['/outro/app'] });
+    ctx.hook({ hook_event_name: 'beforeSubmitPrompt', conversation_id: 'c1', workspace_roots: ['/projetos/app'] });
+    ctx.hook({ hook_event_name: 'beforeSubmitPrompt', conversation_id: 'c2', workspace_roots: ['/outro/app'] });
     const snap = ctx.office.commit().snapshot;
     expect(snap.rooms.map((r) => r.id)).toEqual(['/projetos/app', '/outro/app']);
     expect(snap.rooms.map((r) => r.name)).toEqual(['projetos/app', 'outro/app']);
@@ -181,12 +187,12 @@ describe('fonte do Cursor: presença por hooks', () => {
 
   it('evento fora de HOOK_EVENTS (ou sem hook_event_name) → false, sem lançar', () => {
     const ctx = setup();
-    ctx.hook(ev('sessionStart'));
+    ctx.hook(ev('beforeSubmitPrompt'));
     expect(ctx.hook({ hook_event_name: 'desconhecido', conversation_id: 'c1' })).toBe(false);
     expect(ctx.hook({})).toBe(false);
     expect(ctx.hook({ conversation_id: 'c1' })).toBe(false);
     // Nada mudou no escritório.
-    expect(ctx.agent()?.status).toBe('idle');
+    expect(ctx.agent()?.status).toBe('working');
   });
 
   it('sessionEnd de conversa desconhecida → false', () => {
@@ -214,8 +220,8 @@ describe('fonte do Cursor: presença por hooks', () => {
 
   it('relógio de presença: sem evento novo por mais de STALE_PRESENCE_MS o agente sai; um hook novo o traz de volta', () => {
     const ctx = setup();
-    ctx.hook(ev('sessionStart'));
-    expect(ctx.agent()?.status).toBe('idle');
+    ctx.hook(ev('beforeSubmitPrompt'));
+    expect(ctx.agent()?.status).toBe('working');
     ctx.advance(5 * 60_000 + 1);
     ctx.poll();
     expect(ctx.agent()?.status).toBe('offline');
@@ -291,7 +297,7 @@ describe('fonte do Cursor: presença por hooks', () => {
 
   it('conta única registrada: id cursor, nome Cursor, short/color sem colidir; sources() reflete as sessões', () => {
     const ctx = setup();
-    ctx.hook(ev('sessionStart'));
+    ctx.hook(ev('beforeSubmitPrompt'));
     expect(ctx.source.accountEntries().map((e) => e.id)).toEqual(['cursor']);
     const list = ctx.accounts.list(new Map([['cursor', 1]]));
     expect(list).toHaveLength(1);
@@ -354,7 +360,7 @@ describe('fonte do Cursor: subagentes por hook', () => {
     ctx.hook(ev('sessionStart'));
     expect(ctx.hook({ hook_event_name: 'subagentStop', conversation_id: 'c1', subagent_id: 'ninguem' })).toBe(true);
     expect(ctx.agent('cursor:s:ninguem')).toBeUndefined();
-    expect(ctx.agent('cursor:c1')?.status).toBe('idle');
+    expect(ctx.agent('cursor:c1')).toBeUndefined();
   });
 
   it('subagentStart sem id, sem pai ou com pai desconhecido degrada (nenhum sub quebrado)', () => {
@@ -365,7 +371,7 @@ describe('fonte do Cursor: subagentes por hook', () => {
     expect(ctx.hook({ hook_event_name: 'subagentStart', subagent_id: 'sa-5', parent_conversation_id: 'nao-existe' })).toBe(false); // pai desconhecido
     expect(ctx.agent('cursor:s:sa-4')).toBeUndefined();
     expect(ctx.agent('cursor:s:sa-5')).toBeUndefined();
-    expect(ctx.agent('cursor:c1')?.status).toBe('idle');
+    expect(ctx.agent('cursor:c1')).toBeUndefined();
   });
 
   it('subagentStart sem subagentStop é completado no poll quando a presença expira', () => {
@@ -410,6 +416,8 @@ describe('fonte do Cursor: subagentes por hook', () => {
     mkdirSync(dirname(subFile), { recursive: true });
     writeFileSync(subFile, `${JSON.stringify({ role: 'assistant', message: { content: 'ok' } })}\n`);
     ctx.hook(sub({ parent_conversation_id: 'c1', subagent_id: 'sa-9' }));
+    // Antes do Stop, e sem o arquivo existir: o terminal já aponta para subagents/<subagent_id>.jsonl.
+    expect(ctx.source.transcriptPathOf('cursor:s:sa-9')).toBe(join(dirname(parentFile), 'subagents', 'sa-9.jsonl'));
     ctx.hook({
       hook_event_name: 'subagentStop',
       conversation_id: 'c1',
@@ -447,6 +455,25 @@ describe('fonte do Cursor: subagentes por hook', () => {
     expect(ctx.source.transcriptPathOf('cursor:s:sa-10')).toBe(subFile);
   });
 
+  it('subagentStart grava o transcript previsto mesmo sem o arquivo; o Stop sem achar outro não apaga', () => {
+    const ctx = setup();
+    const parentFile = join(ctx.dir, 'projects', 'slug', 'agent-transcripts', 'c1', 'c1.jsonl');
+    mkdirSync(dirname(parentFile), { recursive: true });
+    writeFileSync(parentFile, '{}\n');
+    expect(ctx.hook(ev('sessionStart', { transcript_path: parentFile }))).toBe(true);
+    expect(ctx.agent('cursor:c1')).toBeUndefined();
+    expect(ctx.office.commit().snapshot.rooms).toEqual([]);
+
+    const predicted = join(dirname(parentFile), 'subagents', 'sa-13.jsonl');
+    ctx.hook(sub({ parent_conversation_id: 'c1', subagent_id: 'sa-13' }));
+    expect(ctx.source.transcriptPathOf('cursor:s:sa-13')).toBe(predicted);
+
+    expect(ctx.hook({ hook_event_name: 'subagentStop', conversation_id: 'c1', subagent_id: 'sa-13', child_conversation_id: 'outro' })).toBe(true);
+    expect(ctx.source.transcriptPathOf('cursor:s:sa-13')).toBe(predicted);
+    expect(ctx.source.terminalParser('cursor:s:sa-13')).toBeDefined();
+    expect(ctx.agent('cursor:s:sa-13')?.status).toBe('done');
+  });
+
   it('subagentStop prefere `agent_transcript_path` e degrada sem caminho conhecido', () => {
     const ctx = setup();
     ctx.hook(ev('sessionStart'));
@@ -479,6 +506,7 @@ describe('fonte do Cursor: pump do transcript (GitHub)', () => {
     const file = join(ctx.home.dir, 'transcript.jsonl');
     writeFileSync(file, `${shellLine('git push origin main')}\n`); // já existia no attach
     ctx.hook(ev('sessionStart', { transcript_path: file }));
+    ctx.hook(ev('beforeSubmitPrompt'));
     ctx.poll();
     expect(ctx.agent()?.activity?.tool).not.toBe('GitHub'); // nada do conteúdo antigo (seekEnd)
 
@@ -492,6 +520,7 @@ describe('fonte do Cursor: pump do transcript (GitHub)', () => {
     const ctx = setup();
     const file = join(ctx.home.dir, 't2.jsonl');
     ctx.hook(ev('sessionStart', { transcript_path: file }));
+    ctx.hook(ev('beforeSubmitPrompt'));
     writeFileSync(file, `${shellLine('npm test')}\n`);
     ctx.poll();
     expect(ctx.agent()?.activity?.tool).not.toBe('GitHub');
@@ -511,6 +540,7 @@ describe('fonte do Cursor: pump do transcript (GitHub)', () => {
     const ctx = setup();
     const file = join(ctx.home.dir, 'late.jsonl');
     ctx.hook(ev('sessionStart', { transcript_path: file }));
+    ctx.hook(ev('beforeSubmitPrompt'));
     expect(() => ctx.poll()).not.toThrow(); // ausente: degrada
     expect(ctx.agent()?.activity?.tool).not.toBe('GitHub');
     writeFileSync(file, `${shellLine('git push origin main')}\n`);
@@ -523,6 +553,7 @@ describe('fonte do Cursor: pump do transcript (GitHub)', () => {
     const file = join(ctx.home.dir, 'rot.jsonl');
     writeFileSync(file, `${shellLine('npm test')}\n${shellLine('ls')}\n`);
     ctx.hook(ev('sessionStart', { transcript_path: file }));
+    ctx.hook(ev('beforeSubmitPrompt'));
     ctx.poll(); // 1º attach: seekEnd (nada do antigo)
     // Rotaciona: o arquivo encolhe e traz um git push no começo.
     writeFileSync(file, `${shellLine('git push origin main')}\n`);
@@ -538,7 +569,9 @@ describe('fonte do Cursor: pump do transcript (GitHub)', () => {
     const file = join(ctx.home.dir, 'live.jsonl');
     writeFileSync(file, `${shellLine('git commit -m antigo')}\n`); // já existia no attach (seekEnd ignora)
     ctx.hook(ev('sessionStart', { transcript_path: file }));
-    expect(hub.size).toBe(1); // a fonte assina o hub (deixa de abrir FileTail próprio)
+    expect(hub.size).toBe(0); // abrir a conversa não assina
+    ctx.hook(ev('beforeSubmitPrompt'));
+    expect(hub.size).toBe(1); // o trabalho assina o hub (deixa de abrir FileTail próprio)
 
     appendFileSync(file, `${shellLine('git push origin main')}\n`);
     hub.tick(); // o hub entrega; a fonte reage ao vivo, sem passar pelo poll()

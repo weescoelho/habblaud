@@ -23,6 +23,25 @@ describe('terminal do Cursor: prompt e resposta', () => {
     expect(out).toEqual([{ kind: 'user', id: 'l1:0:u', at: expect.any(Number), text: 'Escreva os testes' }]);
   });
 
+  it('tira o envelope <timestamp>/<user_query> e mostra só o que foi digitado', () => {
+    const wrapped =
+      '<timestamp>Monday, Oct 12, 2026, 12:03 PM (UTC-3)</timestamp>\n<user_query>\nnao to encontrando no projeto onde está a feature de criar novos agentes pelo office\n</user_query>';
+    const out = read(msg('user', [text(wrapped)]));
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      kind: 'user',
+      text: 'nao to encontrando no projeto onde está a feature de criar novos agentes pelo office',
+    });
+    expect(out[0].at).toBe(Date.parse('Monday, Oct 12, 2026, 12:03 PM'));
+  });
+
+  it('timestamp da linha JSON prevalece sobre o envelope', () => {
+    const iso = '2026-10-10T14:03:00.000Z';
+    const wrapped = '<timestamp>Monday, Oct 12, 2026, 12:03 PM (UTC-3)</timestamp>\n<user_query>\noi\n</user_query>';
+    const out = read(line({ role: 'user', timestamp: iso, message: { content: [text(wrapped)] } }));
+    expect(out[0]).toMatchObject({ kind: 'user', text: 'oi', at: Date.parse(iso) });
+  });
+
   it('role assistant com bloco text vira uma entrada assistant', () => {
     const out = read(msg('assistant', [text('Feito!')]));
     expect(out).toEqual([{ kind: 'assistant', id: 'l1:0', at: expect.any(Number), text: 'Feito!' }]);
