@@ -24,6 +24,11 @@
 // subiu a IDE, então variáveis do seu shell nem sempre chegam aqui). Padrões: porta 4747, espera 25 s (entre 5 e 120),
 // eventos de decisão beforeShellExecution/beforeMCPExecution.
 //
+// Mensagens do escritório (P6): cada rodada também consulta POST /api/cursor/inbox, que marca a presença da conversa
+// (o composer só habilita com um canal vivo) e, no `beforeSubmitPrompt`, zera a trava de auto-followups. No `stop`,
+// havendo mensagem na fila, ela volta como {"followup_message": <texto>} — o único ponto em que o Cursor aceita
+// injetar texto (SC-27/SC-28); sem mensagem, o hook sai silencioso.
+//
 // Regras: node puro (22+), só `node:*`, sem dependências; nunca trava nem quebra a sessão: todo erro = sair com 0 e
 // sem saída; nos eventos de observação nada vai para o stdout (no beforeSubmitPrompt ele viraria contexto do modelo).
 // Tempo esgotado, Habblaud fora do ar ou da porta uma resposta sem id: sai sem imprimir nada e a IDE segue o fluxo
@@ -322,6 +327,18 @@ export async function run(env = process.env, stdinText) {
 
     const sent = await call(base, 'POST', '/api/cursor/events', eventBody(input), EVENT_TIMEOUT_MS);
     debug(`${event}: ${sent ? `${sent.status} ${JSON.stringify(sent.json ?? null)}` : 'Habblaud fora do ar'}`);
+
+    // Caixa do Cursor (P6): a presença da conversa é marcada a cada evento; no `stop` a mensagem enfileirada volta
+    // como `followup_message` (SC-27/SC-28) e o `beforeSubmitPrompt` zera a trava de auto-followups (SC-29). Falha de
+    // rede aqui não bloqueia o turno: sem resposta, o hook segue silencioso.
+    const conversation = conversationIdOf(input);
+    if (conversation) {
+      const box = await call(base, 'POST', '/api/cursor/inbox', { session: conversation, event }, EVENT_TIMEOUT_MS);
+      debug(`inbox ${event}: ${box ? `${box.status} ${JSON.stringify(box.json ?? null)}` : 'Habblaud fora do ar'}`);
+      const followup = box?.json?.followup_message;
+      if (event === 'stop' && typeof followup === 'string' && followup.trim()) return { followup_message: followup };
+    }
+
     // Só os eventos de decisão (com ferramenta e conversa) viram pedido no escritório.
     if (!policy.decisionEvents.has(event)) return undefined;
     if (!conversationIdOf(input) || !toolNameOf(input)) return undefined;

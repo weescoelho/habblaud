@@ -730,10 +730,10 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] Havendo mensagem, o `stop` devolve `{"followup_message": text}`; sem mensagem, sai silencioso
-- [ ] Falha de rede não bloqueia o turno (degrada gracioso)
-- [ ] Gate check passes: `npm run typecheck`
-- [ ] Test count: sem remoção; (o `mod/**` não é coberto pelo vitest; contrato coberto no T24)
+- [x] Havendo mensagem, o `stop` devolve `{"followup_message": text}`; sem mensagem, sai silencioso
+- [x] Falha de rede não bloqueia o turno (degrada gracioso)
+- [x] Gate check passes: `npm run typecheck`
+- [x] Test count: sem remoção; (o `mod/**` não é coberto pelo vitest; contrato coberto no T24)
 
 **Tests**: none
 **Gate**: build
