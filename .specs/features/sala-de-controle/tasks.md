@@ -627,9 +627,9 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] Modelo monta o formulário (prompt/modo/modelo/isolada) e lê o estado da tarefa (SC-21, SC-24)
-- [ ] Gate check passes: `npx vitest run client/src/ui/tasks-model.test.ts`
-- [ ] Test count: casos de montagem/estado verde (sem remoção de teste)
+- [x] Modelo monta o formulário (prompt/modo/modelo/isolada) e lê o estado da tarefa (SC-21, SC-24)
+- [x] Gate check passes: `npx vitest run client/src/ui/tasks-model.test.ts`
+- [x] Test count: casos de montagem/estado verde (sem remoção de teste)
 
 **Tests**: unit
 **Gate**: quick
