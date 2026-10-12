@@ -28,6 +28,8 @@ import { PermissionRegistry } from './permissions/registry';
 import { codexAccountOf } from './codex/http';
 import { createCodexQueueRunner, findCodexBin } from './messages/codex';
 import { createMessageRoutes } from './messages/http';
+import { createSkillRoutes } from './skills/http';
+import { listSkills, skillRoots } from './skills/catalog';
 import { MessageRegistry } from './messages/registry';
 import type { CodexLive } from './sources/codex/live';
 import type { CursorLive } from './sources/cursor/live';
@@ -212,6 +214,32 @@ const api = createApiHandler({
   timeline: createTimelineHandler({ dir: timelineDir, recording: !!timeline }),
   permissions: permissions ? createPermissionRoutes(permissions) : undefined,
   messages: messages ? createMessageRoutes(messages) : undefined,
+  skills:
+    config.terminal && messages && cursor
+      ? createSkillRoutes({
+          list: (cwd) => listSkills(skillRoots(cwd, config.home)),
+          projectOf: (agentId) => {
+            const a = office.list().find((x) => x.id === agentId);
+            if (!a) return undefined;
+            // A sala do agente principal aponta para o seu cwd (roomPath). Usamos a sala dele: office.roomPath(id).
+            const roomPath = office.roomPath(a.roomId);
+            return roomPath ?? (a as any).cwd;
+          },
+          cwd: () => process.cwd(),
+          submit: (agentId, prompt) => {
+            try {
+              const r = messages.send({ agentId, text: prompt });
+              if ('message' in r) return { ok: true };
+              if (r.error === 'too-many') return { ok: false, status: 429, error: 'já há 5 mensagens esperando' };
+              if (r.error === 'not-found') return { ok: false, status: 404, error: 'agente desconhecido: ele já saiu do escritório?' };
+              if (r.error === 'unavailable') return { ok: false, status: 409, error: r.reason ?? 'a sessão não está disponível' };
+              return { ok: false, status: 400, error: r.error ?? 'não consegui entregar a mensagem' };
+            } catch (err: any) {
+              return { ok: false, status: 400, error: err?.message ?? 'não consegui entregar a mensagem' };
+            }
+          },
+        })
+      : undefined,
   codexLive,
   cursorLive,
   // Tarefas headless: só com bind local e o Cursor ligado (a fonte hospeda o TaskHost); a trava do Host local é do app.ts.

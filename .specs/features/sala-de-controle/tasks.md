@@ -831,9 +831,9 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] As rotas respondem com a trava local
-- [ ] Gate check passes: `npm run typecheck && npm test && npm run build`
-- [ ] Test count: sem remoção
+- [x] As rotas respondem com a trava local
+- [x] Gate check passes: `npm run typecheck && npm test && npm run build`
+- [x] Test count: sem remoção
 
 **Tests**: none
 **Gate**: build
