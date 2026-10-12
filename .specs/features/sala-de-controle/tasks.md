@@ -453,10 +453,10 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] `create()` cria `git worktree add` com branch por tarefa (SC-22)
-- [ ] `remove()` apaga worktree+branch; com alterações não commitadas, **preserva** e sinaliza conflito (SC-23)
-- [ ] Gate check passes: `npx vitest run server/sources/cursor/worktree.test.ts`
-- [ ] Test count: casos de criação, remoção limpa e conflito verde (sem remoção de teste)
+- [x] `create()` cria `git worktree add` com branch por tarefa (SC-22)
+- [x] `remove()` apaga worktree+branch; com alterações não commitadas, **preserva** e sinaliza conflito (SC-23)
+- [x] Gate check passes: `npx vitest run server/sources/cursor/worktree.test.ts`
+- [x] Test count: casos de criação, remoção limpa e conflito verde (sem remoção de teste)
 
 **Tests**: unit
 **Gate**: quick
