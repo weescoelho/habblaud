@@ -7,6 +7,7 @@ import {
   composerMode,
   composerTip,
   CURSOR_OFF_TEXT,
+  CURSOR_TIMEOUT_ERROR,
   DELIVERED_SHOW_MS,
   enterSends,
   isSettled,
@@ -112,11 +113,16 @@ describe('caixa de mensagem (peças puras)', () => {
     expect(composerMode(codex({ status: 'offline' }), ON)).toEqual({ kind: 'off', text: 'Sessão encerrada' });
   });
 
-  it('Cursor: mensagens não são oferecidas (Fase 5, 06 §6.6) — a gaveta esconde e sobra o motivo', () => {
+  it('Cursor: com o canal da IDE permite enviar; sem ele, degrada com CURSOR_OFF_TEXT (SC-27, SC-30)', () => {
     const cursor = (over: Partial<AgentInfo> = {}) => agent({ provider: 'cursor', ...over });
-    // Principal ao vivo, com plugin/recurso/local: ainda assim, `off` (v1 não oferece).
-    expect(composerMode(cursor(), ON)).toEqual({ kind: 'off', text: CURSOR_OFF_TEXT });
+    // Com o canal (o hook da IDE conectado), o composer volta a funcionar como no Claude Code (SC-27).
+    expect(composerMode(cursor(), ON)).toEqual({ kind: 'ready' });
+    for (const status of ['working', 'waiting', 'shell'] as const) expect(composerMode(cursor({ status }), ON).kind).toBe('ready');
+    // Sem canal: off com o texto do Cursor (SC-30), sem a dica de plugin do Claude.
+    expect(composerMode(cursor({ canMessage: undefined }), ON)).toEqual({ kind: 'off', text: CURSOR_OFF_TEXT });
     expect(CURSOR_OFF_TEXT).toBe('Para responder, use o Cursor');
+    // Recurso desligado: também off com o texto do Cursor (não fala do terminal do Claude Code).
+    expect(composerMode(cursor(), { ...ON, enabled: false })).toEqual({ kind: 'off', text: CURSOR_OFF_TEXT });
     // A guarda do Cursor não mascara estados mais específicos.
     const sub = composerMode(cursor({ kind: 'sub', parentId: 'acc:1' }), ON);
     expect(sub).toMatchObject({ kind: 'off', text: expect.stringMatching(/^Subagentes/) });
@@ -125,6 +131,16 @@ describe('caixa de mensagem (peças puras)', () => {
     expect(composerMode(cursor(), { ...ON, replaying: true })).toMatchObject({ text: expect.stringMatching(/timelapse/) });
     // Sem regressão: claude (sem provider) e codex seguem `ready` com entregador.
     expect(composerMode(agent(), ON)).toEqual({ kind: 'ready' });
+  });
+
+  it('Cursor: "na fila"/"entregue" e a dica falam do fim do turno da IDE', () => {
+    expect(sendStatusText({ phase: 'queued', at: 0 }, 0, 'cursor')).toBe('Na fila: entregue ao fim do turno do Cursor…');
+    expect(sendStatusText({ phase: 'delivered', at: 0 }, 1_000, 'cursor')).toBe('Entregue ✓ ao fim do turno do Cursor');
+    expect(sendStatusText({ phase: 'delivered', at: 0 }, DELIVERED_SHOW_MS, 'cursor')).toBe('');
+    expect(composerTip('cursor')).toMatch(/quando o Cursor terminar o turno/);
+    expect(timeoutError('cursor')).toBe(CURSOR_TIMEOUT_ERROR);
+    // O Claude Code continua como antes.
+    expect(sendStatusText({ phase: 'queued', at: 0 }, 0, 'claude')).toBe('Na fila: esperando a sessão buscar a mensagem…');
   });
 
   it('Codex: "Entregue" é a fila da sessão; dica e prazo falam do Codex', () => {

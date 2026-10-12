@@ -755,11 +755,11 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] Com canal: cursor permite enviar e mostra "na fila"/"entregue" (SC-27)
-- [ ] Sem canal: `off` com `CURSOR_OFF_TEXT` (sem regressão à Fase 5) (SC-30)
-- [ ] Claude/Codex inalterados
-- [ ] Gate check passes: `npx vitest run client/src/ui/composer-model.test.ts`
-- [ ] Test count: casos on/off verde (sem remoção de teste)
+- [x] Com canal: cursor permite enviar e mostra "na fila"/"entregue" (SC-27)
+- [x] Sem canal: `off` com `CURSOR_OFF_TEXT` (sem regressão à Fase 5) (SC-30)
+- [x] Claude/Codex inalterados
+- [x] Gate check passes: `npx vitest run client/src/ui/composer-model.test.ts`
+- [x] Test count: casos on/off verde (sem remoção de teste)
 
 **Tests**: unit
 **Gate**: quick
