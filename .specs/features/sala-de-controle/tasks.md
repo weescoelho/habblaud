@@ -855,9 +855,9 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] Renderiza nome/descrição e marca indisponíveis (SC-32, SC-34)
-- [ ] Gate check passes: `npx vitest run client/src/ui/skills-model.test.ts`
-- [ ] Test count: casos válido/quebrado verde (sem remoção de teste)
+- [x] Renderiza nome/descrição e marca indisponíveis (SC-32, SC-34)
+- [x] Gate check passes: `npx vitest run client/src/ui/skills-model.test.ts`
+- [x] Test count: casos válido/quebrado verde (sem remoção de teste)
 
 **Tests**: unit
 **Gate**: quick
