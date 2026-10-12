@@ -7,6 +7,8 @@ import { setQuiet } from '../log';
 import { NameStore } from '../model/names';
 import { Office } from '../model/office';
 import {
+  CURSOR_FOLLOWUP_MAX,
+  ERR_CURSOR_UNAVAILABLE,
   ERR_GONE,
   ERR_NOT_CONFIRMED,
   ERR_NOT_FETCHED,
@@ -312,5 +314,63 @@ describe('MessageRegistry: demo', () => {
     office.setDemo(false);
     registry.tick();
     expect(registry.get(id)).toMatchObject({ status: 'failed', error: ERR_GONE });
+  });
+});
+
+describe('MessageRegistry: caixa do Cursor', () => {
+  const CURSOR = 'cursor:conv-1';
+  const CONV = 'conv-1';
+
+  function cursorSetup() {
+    const base = setup();
+    base.office.addMain({ id: CURSOR, provider: 'cursor', account: 'cursor', sessionId: CONV, cwd: '/p/loja', role: 'Agente principal (Cursor)', startedAt: 0, status: 'idle' });
+    return base;
+  }
+
+  it('a rodada do hook marca a presença e, no stop, entrega a mensagem (delivered, idempotente por id)', () => {
+    const { office, registry } = cursorSetup();
+    expect(registry.canMessage(CURSOR)).toBe(false);
+    expect(registry.cursorPoll({ session: CONV })).toEqual({});
+    expect(registry.canMessage(CURSOR)).toBe(true);
+    expect(registry.reachable()).toEqual(new Set([CURSOR]));
+    expect(snapAgent(office, CURSOR)?.canMessage).toBe(true);
+
+    const id = sent(registry.send({ agentId: CURSOR, text: 'siga com o teste' }));
+    expect(registry.cursorPoll({ session: CONV, event: 'stop' })).toEqual({ message: { id, text: 'siga com o teste' } });
+    expect(registry.get(id)?.status).toBe('delivered');
+    // Idempotente (SC-31): a mesma mensagem nunca sai duas vezes.
+    expect(registry.cursorPoll({ session: CONV, event: 'stop' })).toEqual({});
+    expect(registry.get(id)?.status).toBe('delivered');
+  });
+
+  it('sessão desconhecida ou evento sem agente: vazio (não quebra); corpo inválido lança', () => {
+    const { registry } = cursorSetup();
+    expect(registry.cursorPoll({ session: 'nao-existe', event: 'stop' })).toEqual({});
+    for (const bad of [null, {}, { session: '' }, { session: 42 }, []]) expect(() => registry.cursorPoll(bad)).toThrow(/session/);
+  });
+
+  it('trava de auto-followups: após 5 entregas sem um prompt do usuário, para; o prompt do usuário retoma', () => {
+    const { registry } = cursorSetup();
+    registry.cursorPoll({ session: CONV });
+    for (let i = 0; i < CURSOR_FOLLOWUP_MAX; i++) sent(registry.send({ agentId: CURSOR, text: `m${i}` }));
+    for (let i = 0; i < CURSOR_FOLLOWUP_MAX; i++) {
+      expect(registry.cursorPoll({ session: CONV, event: 'stop' }).message?.text).toBe(`m${i}`);
+    }
+    // Uma mensagem nova ainda na fila fica retida: exige ação explícita (SC-29).
+    const next = sent(registry.send({ agentId: CURSOR, text: 'sexta' }));
+    expect(registry.cursorPoll({ session: CONV, event: 'stop' })).toEqual({ locked: true });
+    expect(registry.get(next)?.status).toBe('queued');
+    // O usuário respondeu na IDE (prompt): a trava volta a zero e a fila anda.
+    expect(registry.cursorPoll({ session: CONV, event: 'beforeSubmitPrompt' })).toEqual({});
+    expect(registry.cursorPoll({ session: CONV, event: 'stop' })).toEqual({ message: { id: next, text: 'sexta' } });
+  });
+
+  it('sem canal (hook não conectado): o motivo diz como instalar; subagente nunca recebe', () => {
+    const { office, registry } = cursorSetup();
+    expect(registry.send({ agentId: CURSOR, text: 'oi' })).toEqual({ error: 'unavailable', reason: ERR_CURSOR_UNAVAILABLE });
+    office.addSub({ id: `${CONV}:s1`, parentId: CURSOR, sessionId: CONV, role: 'Explore', background: false, startedAt: 0 });
+    registry.cursorPoll({ session: CONV });
+    expect(registry.send({ agentId: `${CONV}:s1`, text: 'oi' })).toEqual({ error: 'unavailable', reason: expect.stringMatching(/subagentes/) });
+    expect('message' in registry.send({ agentId: CURSOR, text: 'oi' })).toBe(true);
   });
 });

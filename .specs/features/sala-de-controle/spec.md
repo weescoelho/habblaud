@@ -305,11 +305,11 @@ worktree e vê-la na sala do projeto de origem com o rótulo da tarefa.
 | SC-24 | P5: Orquestrador headless | - | Pending |
 | SC-25 | P5: Orquestrador headless | - | Pending |
 | SC-26 | P5: Orquestrador headless | - | Pending |
-| SC-27 | P6: Mensagem na IDE | - | Pending |
-| SC-28 | P6: Mensagem na IDE | - | Pending |
-| SC-29 | P6: Mensagem na IDE | - | Pending |
-| SC-30 | P6: Mensagem na IDE | - | Pending |
-| SC-31 | P6: Mensagem na IDE | - | Pending |
+| SC-27 | P6: Mensagem na IDE | - | Implementing |
+| SC-28 | P6: Mensagem na IDE | - | Implementing |
+| SC-29 | P6: Mensagem na IDE | - | Implementing |
+| SC-30 | P6: Mensagem na IDE | - | Implementing |
+| SC-31 | P6: Mensagem na IDE | - | Implementing |
 | SC-32 | P7: Skills | - | Pending |
 | SC-33 | P7: Skills | - | Pending |
 | SC-34 | P7: Skills | - | Pending |

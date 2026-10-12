@@ -679,11 +679,11 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] Mensagem `queued` vira `sent`/`delivered` de forma idempotente por `id` (SC-31)
-- [ ] Após 5 entregas automáticas sem resposta, para e exige ação (SC-29); retoma com novo prompt do usuário
-- [ ] `unavailableReason` certo quando não há canal (SC-30)
-- [ ] Gate check passes: `npx vitest run server/messages/registry.test.ts`
-- [ ] Test count: casos de fila/idempotência/trava verde (sem remoção de teste)
+- [x] Mensagem `queued` vira `sent`/`delivered` de forma idempotente por `id` (SC-31)
+- [x] Após 5 entregas automáticas sem resposta, para e exige ação (SC-29); retoma com novo prompt do usuário
+- [x] `unavailableReason` certo quando não há canal (SC-30)
+- [x] Gate check passes: `npx vitest run server/messages/registry.test.ts`
+- [x] Test count: casos de fila/idempotência/trava verde (sem remoção de teste)
 
 **Tests**: unit
 **Gate**: full
