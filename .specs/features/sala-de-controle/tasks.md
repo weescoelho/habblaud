@@ -429,9 +429,9 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] O mosaico aparece e alterna com o shell sem afetar os demais componentes
-- [ ] Gate check passes: `npm run typecheck && npm run build`
-- [ ] Test count: sem remoção
+- [x] O mosaico aparece e alterna com o shell sem afetar os demais componentes
+- [x] Gate check passes: `npm run typecheck && npm run build`
+- [x] Test count: sem remoção
 
 **Tests**: none
 **Gate**: build
