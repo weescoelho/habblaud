@@ -350,6 +350,8 @@ export interface OfficeSnapshot {
   agents: AgentInfo[];
   /** Contas do Claude detectadas (com uso de 5h/semanal quando disponível). */
   accounts: AccountInfo[];
+  /** Tarefas headless gerenciadas do Cursor (P5); ausente/false quando o recurso está desligado. Aditivo. */
+  tasks?: CursorTaskInfo[];
   meta: {
     demo: boolean;
     sources: SourceInfo[];
@@ -370,9 +372,35 @@ export interface OfficeSnapshot {
      * desligar. Quem recebe agora diz AgentInfo.canMessage. Ausente/false = recurso desligado.
      */
     messages?: boolean;
+    /**
+     * Tarefas headless gerenciadas ligadas (POST/GET /api/tasks*): a mesma trava do terminal. A lista viaja em
+     * OfficeSnapshot.tasks. Ausente/false = recurso desligado.
+     */
+    tasks?: boolean;
     /** Verificação de versão nova no GitHub (ausente nos testes e no timelapse). */
     updates?: UpdateStatus;
   };
+}
+
+/** Tarefa headless gerenciada do Cursor (P5): aparece no snapshot e é observável como uma sessão comum. */
+export interface CursorTaskInfo {
+  id: string;
+  prompt: string;
+  mode: 'plan' | 'ask' | 'agent';
+  model?: string;
+  /** Agente do Office que representa a tarefa (observabilidade normal: status, atividade, terminal). */
+  agentId: string;
+  /** Sala (projeto de origem). */
+  roomId: string;
+  /** Rótulo: nome da tarefa ou da branch. */
+  label: string;
+  worktree?: string;
+  branch?: string;
+  status: 'starting' | 'running' | 'stopped' | 'failed' | 'done';
+  pid?: number;
+  sessionId?: string;
+  createdAt: number;
+  error?: string;
 }
 
 export interface FeedItem {

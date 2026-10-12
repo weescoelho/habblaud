@@ -503,9 +503,9 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] `CursorTaskInfo` exportado; `tasks?` aditivo no snapshot/meta
-- [ ] Gate check passes: `npm run typecheck`
-- [ ] Test count: n/a (camada de tipo)
+- [x] `CursorTaskInfo` exportado; `tasks?` aditivo no snapshot/meta
+- [x] Gate check passes: `npm run typecheck`
+- [x] Test count: n/a (camada de tipo)
 
 **Tests**: none
 **Gate**: build
