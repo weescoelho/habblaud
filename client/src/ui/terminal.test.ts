@@ -3,6 +3,7 @@ import type { AgentInfo, ShellJob, TerminalEntry } from '../../../shared/types';
 import {
   diffLineKind,
   entryKey,
+  followTerminalAgent,
   footerGlyph,
   entryTimeTitle,
   moreLabel,
@@ -109,6 +110,19 @@ describe('TerminalLog', () => {
     expect(log.trim(2)).toEqual([]);
     // Um resultado atrasado da ferramenta descartada aparece sozinho.
     expect(log.push([result('r9', 't1')]).added.map((i) => i.type)).toEqual(['orphan']);
+  });
+});
+
+describe('followTerminalAgent', () => {
+  it('troca para o agente selecionado quando o terminal já está aberto noutro', () => {
+    expect(followTerminalAgent('ana', { type: 'agent', id: 'caio' })).toBe('caio');
+  });
+
+  it('não mexe se estiver fechado, no mesmo agente ou numa sala', () => {
+    expect(followTerminalAgent(null, { type: 'agent', id: 'caio' })).toBeUndefined();
+    expect(followTerminalAgent('ana', { type: 'agent', id: 'ana' })).toBeUndefined();
+    expect(followTerminalAgent('ana', { type: 'room', id: 'loja' })).toBeUndefined();
+    expect(followTerminalAgent('ana', null)).toBeUndefined();
   });
 });
 

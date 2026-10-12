@@ -2,6 +2,8 @@
 // por que não), o que a tecla Enter faz, a linha de situação de cada envio e o ritmo da consulta da entrega.
 // No Codex a mensagem entra na fila da sessão (`codex queue`) e vira prompt quando ela fica ociosa: "Entregue" diz
 // isso; sem quem entregue (no Docker, o auxiliar do host), a dica é a do `npm run codex:bridge`.
+// O Cursor não recebe mensagem pelo escritório: injetar texto no fim do turno travava a IDE e não entrava na
+// conversa. A caixa fica oculta e o texto manda responder no Cursor.
 import { MESSAGE_MAX } from '../../../shared/messages';
 import type { AgentInfo, OutboxStatus, Provider } from '../../../shared/types';
 
@@ -9,6 +11,8 @@ import type { AgentInfo, OutboxStatus, Provider } from '../../../shared/types';
 export const PLUGIN_HINT = 'Para mandar mensagens daqui: npm run mod:install (plugin habblaud-mensagens)';
 /** A mesma dica para um agente do Codex sem entregador (no modo Node o próprio servidor entrega). */
 export const CODEX_BRIDGE_HINT = 'Para mandar mensagens ao Codex: com o Habblaud no Docker, deixe npm run codex:bridge rodando; no modo Node funciona sozinho';
+/** A caixa do Cursor fica fechada: a resposta é na conversa da IDE. */
+export const CURSOR_OFF_TEXT = 'Para responder, use o Cursor';
 
 /**
  * - ready: dá para mandar (principal com o plugin conectado, recurso ligado, página local);
@@ -30,6 +34,8 @@ export function composerMode(agent: AgentInfo | undefined, env: ComposerEnv): Co
   if (env.replaying) return { kind: 'off', text: 'Sem mensagens no timelapse: o escritório mostrado é o de outro momento' };
   if (agent?.kind === 'sub') return { kind: 'off', text: 'Subagentes não recebem mensagens: escreva para o agente principal' };
   if (!agent || agent.status === 'offline' || agent.status === 'done') return { kind: 'off', text: 'Sessão encerrada' };
+  // O Cursor não tem entrega. A guarda fica depois dos estados mais específicos (replay/sub/sessão encerrada).
+  if (agent.provider === 'cursor') return { kind: 'off', text: CURSOR_OFF_TEXT };
   const codex = agent.provider === 'codex';
   if (!env.enabled) return { kind: 'off', text: codex ? 'Para responder, use o Codex' : 'Para responder, use o terminal do Claude Code' };
   if (!env.local) return { kind: 'off', text: 'Para mandar mensagens por aqui, abra o Habblaud por http://localhost (ou 127.0.0.1)' };
@@ -39,6 +45,7 @@ export function composerMode(agent: AgentInfo | undefined, env: ComposerEnv): Co
 
 /** Dica embaixo da caixa (gaveta): como a mensagem entra na sessão. */
 export function composerTip(provider: Provider = 'claude'): string {
+  if (provider === 'cursor') return 'Responda na conversa do Cursor. O escritório não envia mensagem para essa sessão.';
   return provider === 'codex'
     ? 'Entra na fila da sessão e vira o próximo prompt quando o Codex terminar o que está fazendo. Enter manda; Shift+Enter quebra a linha.'
     : 'Entra na sessão como se você tivesse digitado. Enter manda; Shift+Enter quebra a linha.';
@@ -84,11 +91,13 @@ export const DELIVERED_SHOW_MS = 12_000;
 /** Texto da linha de situação ('' = nada a mostrar). */
 export function sendStatusText(s: SendState | undefined, now: number, provider: Provider = 'claude'): string {
   if (!s) return '';
+  const cursor = provider === 'cursor';
   const codex = provider === 'codex';
   switch (s.phase) {
     case 'sending':
       return 'Enviando…';
     case 'queued':
+      if (cursor) return 'Na fila: entregue ao fim do turno do Cursor…';
       return codex ? 'Na fila: entregando ao Codex…' : 'Na fila: esperando a sessão buscar a mensagem…';
     case 'sent':
       return 'Entregando à sessão…';
@@ -96,6 +105,7 @@ export function sendStatusText(s: SendState | undefined, now: number, provider: 
       // Entregue = entrou na sessão ou na fila dela (com o agente ocupado, só entra quando ele terminar o turno). No
       // Codex é sempre a fila: o dono da sessão a consulta a cada ~10 s e só a usa com a sessão ociosa.
       if (now - s.at >= DELIVERED_SHOW_MS) return '';
+      if (cursor) return 'Entregue ✓ ao fim do turno do Cursor';
       return codex
         ? 'Entregue ✓ na fila da sessão: entra quando o Codex terminar o que está fazendo (até ~10 s)'
         : 'Entregue ✓ (se o agente estiver ocupado, entra quando ele terminar)';
@@ -119,9 +129,11 @@ export function pollDelay(elapsed: number): number {
 export const LOST_ERROR = 'o Habblaud não conhece mais esta mensagem (ele reiniciou?)';
 export const TIMEOUT_ERROR = 'sem notícia da entrega: confira no terminal do Claude Code';
 export const CODEX_TIMEOUT_ERROR = 'sem notícia da entrega: confira no Codex';
+export const CURSOR_TIMEOUT_ERROR = 'sem notícia da entrega: confira na conversa do Cursor';
 export const OFFLINE_ERROR = 'não foi possível falar com o Habblaud';
 
 /** Prazo da consulta acabou sem notícia: onde conferir. */
 export function timeoutError(provider: Provider = 'claude'): string {
+  if (provider === 'cursor') return CURSOR_TIMEOUT_ERROR;
   return provider === 'codex' ? CODEX_TIMEOUT_ERROR : TIMEOUT_ERROR;
 }

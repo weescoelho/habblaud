@@ -3,9 +3,10 @@
 // Eventos nomeados: init | append (o `data` é o de TerminalMessage em shared/types.ts). A rota
 // (http/app.ts) já conferiu que o recurso está ligado e que o acesso é local.
 //
-// Cada conexão tem o próprio FileTail e o próprio parser (o da ferramenta do agente: SourceSet.parserFor; o do
-// Claude Code por padrão): ao conectar, lê o fim do transcript (≈4 MB, últimas 500 entradas) e manda `init`;
-// depois, polling de ~400 ms manda `append` com o que for novo.
+// Cada conexão tem o próprio parser (o da ferramenta do agente: SourceSet.parserFor; o do Claude Code por padrão):
+// ao conectar, lê o fim do transcript (≈4 MB, últimas 500 entradas) e manda `init`; depois, as linhas novas vêm de
+// UMA assinatura do TranscriptHub por agente/transcript (o mesmo leitor serve N terminais, com `fs.watch` de
+// acelerador) e viram `append`. O `init` continua sendo uma leitura pontual por conexão.
 // Transcript truncado/substituído (ou trocado por /clear no mesmo processo) = parser novo e `init` de
 // novo. Agentes do demo não têm transcript: a conversa fictícia sai de demoTerminalEntries a cada ~500 ms.
 // Sessões do histórico (GET /api/sessions/:conta/:sessionId/terminal, http/sessions.ts) usam o mesmo
@@ -15,8 +16,9 @@ import { demoTerminalEntries } from '../../shared/demo/terminal';
 import type { Activity, AgentInfo, TerminalEntry, TerminalInit } from '../../shared/types';
 import { errMsg, log } from '../log';
 import type { Office } from '../model/office';
-import { FileTail } from '../sources/tail';
+import { FileTail, type TailRead } from '../sources/tail';
 import { createTerminalParser, type TerminalParser } from '../sources/terminal';
+import { TranscriptHub, type HubSubscription } from '../sources/transcript-hub';
 import { sendJson } from './app';
 import { frame } from './sse';
 
@@ -50,6 +52,8 @@ export interface TerminalOptions {
   parserFor?: (agentId: string) => TerminalParser | undefined;
   /** Fábrica do parser padrão (testes); padrão: createTerminalParser (o do Claude Code). */
   createParser?: () => TerminalParser;
+  /** Leitor compartilhado do transcript (uma leitura por agente serve N terminais). Padrão: um novo hub. */
+  hub?: TranscriptHub;
   /** Conversa fictícia dos agentes do demo (testes); padrão: demoTerminalEntries. */
   demoEntries?: (agent: AgentInfo, history: Activity[]) => TerminalEntry[];
   maxStreams?: number;
@@ -74,6 +78,8 @@ interface ConversationSource {
   /** Conversa recente, para o `init`. */
   load(): TerminalInit;
   poll(): PollResult;
+  /** Solta o que a conexão segurava (ex.: a assinatura do hub). */
+  dispose?(): void;
 }
 
 /** Passa as linhas pelo parser; uma linha que o faça falhar é pulada sem perder o resto do lote. */
@@ -91,31 +97,38 @@ function parseInto(parser: TerminalParser, lines: readonly string[], out: Termin
 }
 
 /**
- * Agente real (ou sessão do histórico): lê o transcript JSONL com um FileTail próprio. `transcriptPathOf`
- * informa a troca de transcript do principal (/clear); numa sessão do histórico ele nunca muda.
+ * Agente real (ou sessão do histórico): o `init` é uma leitura pontual do fim do transcript (janela recente) e as
+ * linhas novas vêm do `TranscriptHub` — o mesmo leitor por path serve todos os terminais daquele agente (SC-05).
+ * `transcriptPathOf` informa a troca de transcript do principal (/clear); numa sessão do histórico ele nunca muda.
  */
 class TranscriptSource implements ConversationSource {
-  private tail: FileTail;
+  /** Path do transcript que a assinatura acompanha (undefined quando a sessão sumiu do mapa). */
+  private path: string;
+  private sub: HubSubscription | null = null;
+  /** Leituras do hub ainda não consumidas pelo `poll()`. */
+  private pending: TailRead[] = [];
   /** Criado em load(), que sempre roda antes do primeiro poll(). */
   private parser!: TerminalParser;
 
   constructor(
     private readonly agentId: string,
     path: string,
-    private readonly o: Required<Pick<TerminalOptions, 'transcriptPathOf' | 'createParser' | 'initTailBytes' | 'initEntries'>>,
+    private readonly o: Required<Pick<TerminalOptions, 'transcriptPathOf' | 'createParser' | 'initTailBytes' | 'initEntries' | 'hub'>>,
     readonly intervalMs: number,
   ) {
-    this.tail = new FileTail(path);
+    this.path = path;
   }
 
   load(): TerminalInit {
     this.parser = this.o.createParser();
-    const offset = this.tail.seekTail(this.o.initTailBytes);
+    // Janela recente: leitura pontual própria (o hub só entrega o que vier depois de assinar).
+    const tail = new FileTail(this.path);
+    const offset = tail.seekTail(this.o.initTailBytes);
     const keep = this.o.initEntries;
     let entries: TerminalEntry[] = [];
     let dropped = false;
     for (let i = 0; i < MAX_INIT_READS; i++) {
-      const r = this.tail.read();
+      const r = tail.read();
       parseInto(this.parser, r.lines, entries);
       // Descarta o excesso pelo caminho (transcript com muitas entradas pequenas).
       if (entries.length > keep * 2) {
@@ -128,25 +141,40 @@ class TranscriptSource implements ConversationSource {
       entries = entries.slice(-keep);
       dropped = true;
     }
+    this.pending = [];
+    this.ensureSub();
     return { agentId: this.agentId, entries, truncated: offset > 0 || dropped };
   }
 
   poll(): PollResult {
     // /clear ou /resume no mesmo processo: o principal continua o mesmo, o transcript é outro.
     const path = this.o.transcriptPathOf(this.agentId);
-    if (path && path !== this.tail.path) {
-      this.tail = new FileTail(path);
+    if (path && path !== this.path) {
+      this.sub?.unsubscribe();
+      this.sub = null;
+      this.path = path;
       return { init: this.load() };
     }
+    if (!this.pending.length) return { append: [] };
+    const reads = this.pending;
+    this.pending = [];
+    // Truncado/substituído: o hub releu do começo; reconstrói o `init` (parser novo) e descarta essas linhas.
+    if (reads.some((r) => r.reset)) return { init: this.load() };
     const fresh: TerminalEntry[] = [];
-    for (let i = 0; i < READS_PER_POLL; i++) {
-      // Arquivo sumido: `missing`, sem linhas; continua tentando nos próximos ciclos.
-      const r = this.tail.read();
-      if (r.reset) return { init: this.load() };
-      parseInto(this.parser, r.lines, fresh);
-      if (!r.more) break;
-    }
+    for (const r of reads) parseInto(this.parser, r.lines, fresh);
     return { append: fresh };
+  }
+
+  dispose(): void {
+    this.sub?.unsubscribe();
+    this.sub = null;
+    this.pending = [];
+  }
+
+  /** Uma assinatura por conexão no leitor compartilhado do path atual. */
+  private ensureSub(): void {
+    if (this.sub) return;
+    this.sub = this.o.hub.subscribe(this.path, { onRead: (r) => this.pending.push(r) });
   }
 }
 
@@ -185,6 +213,7 @@ class DemoSource implements ConversationSource {
 interface Stream {
   res: ServerResponse;
   timer: ReturnType<typeof setInterval> | null;
+  source: ConversationSource;
 }
 
 export class TerminalStreams {
@@ -192,6 +221,9 @@ export class TerminalStreams {
   private pinger: ReturnType<typeof setInterval> | null = null;
   private readonly createParser: () => TerminalParser;
   private readonly demoEntries: NonNullable<TerminalOptions['demoEntries']>;
+  private readonly hub: TranscriptHub;
+  /** Só fecha o hub no stop() se foi ele que o criou (injeta compartilhado com a fonte: T4). */
+  private readonly ownsHub: boolean;
   private readonly maxStreams: number;
   private readonly initTailBytes: number;
   private readonly initEntries: number;
@@ -203,6 +235,8 @@ export class TerminalStreams {
   constructor(private readonly opts: TerminalOptions) {
     this.createParser = opts.createParser ?? createTerminalParser;
     this.demoEntries = opts.demoEntries ?? demoTerminalEntries;
+    this.hub = opts.hub ?? new TranscriptHub();
+    this.ownsHub = !opts.hub;
     this.maxStreams = opts.maxStreams ?? MAX_STREAMS;
     this.initTailBytes = opts.initTailBytes ?? INIT_TAIL_BYTES;
     this.initEntries = opts.initEntries ?? INIT_ENTRIES;
@@ -221,6 +255,7 @@ export class TerminalStreams {
       this.drop(s);
       s.res.end();
     }
+    if (this.ownsHub) this.hub.close();
   }
 
   /**
@@ -240,7 +275,7 @@ export class TerminalStreams {
    * (HistorySession.createParser; padrão: o do Claude Code). Mesmos erros de attach (429/500).
    */
   attachSession(req: IncomingMessage, res: ServerResponse, streamId: string, path: string, createParser?: () => TerminalParser): void {
-    const o = { transcriptPathOf: () => undefined, createParser: createParser ?? this.createParser, initTailBytes: this.initTailBytes, initEntries: this.initEntries };
+    const o = { transcriptPathOf: () => undefined, createParser: createParser ?? this.createParser, initTailBytes: this.initTailBytes, initEntries: this.initEntries, hub: this.hub };
     this.serve(req, res, streamId, new TranscriptSource(streamId, path, o, this.sessionPollMs));
   }
 
@@ -265,7 +300,7 @@ export class TerminalStreams {
       'X-Accel-Buffering': 'no',
     });
     res.write('retry: 2000\n\n');
-    const s: Stream = { res, timer: null };
+    const s: Stream = { res, timer: null, source };
     this.streams.add(s);
     this.write(s, frame('init', init));
     s.timer = setInterval(() => this.pump(s, source, id), source.intervalMs);
@@ -290,7 +325,7 @@ export class TerminalStreams {
       if (!path) return 'transcript do agente não encontrado';
       const parserFor = this.opts.parserFor;
       const createParser = parserFor ? () => parserFor(agentId) ?? this.createParser() : this.createParser;
-      const o = { transcriptPathOf: this.opts.transcriptPathOf, createParser, initTailBytes: this.initTailBytes, initEntries: this.initEntries };
+      const o = { transcriptPathOf: this.opts.transcriptPathOf, createParser, initTailBytes: this.initTailBytes, initEntries: this.initEntries, hub: this.hub };
       return new TranscriptSource(agentId, path, o, this.pollMs);
     }
     // Os agentes do demo não estão entre os reais do Office, mas office.detail os encontra.
@@ -333,6 +368,7 @@ export class TerminalStreams {
     if (!this.streams.delete(s)) return;
     if (s.timer) clearInterval(s.timer);
     s.timer = null;
+    s.source.dispose?.();
     if (!this.streams.size && this.pinger) {
       clearInterval(this.pinger);
       this.pinger = null;

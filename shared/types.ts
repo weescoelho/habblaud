@@ -13,8 +13,9 @@ export type AgentKind = 'main' | 'sub';
  * `provider` é opcional e AUSENTE quer dizer 'claude' (tudo o que existia antes do Codex continua igual).
  * - claude: Claude Code;
  * - codex: OpenAI Codex (CLI `codex` e o app desktop, que gravam no mesmo CODEX_HOME).
+ * - cursor: Cursor (IDE e CLI `cursor-agent`), observado pelos hooks do Cursor.
  */
-export type Provider = 'claude' | 'codex';
+export type Provider = 'claude' | 'codex' | 'cursor';
 
 /**
  * Estado de alto nível de um agente — é o que dirige o comportamento do personagem.
@@ -70,6 +71,18 @@ export type ActivityKind =
   | 'done' // terminou o turno
   | 'other';
 
+/** Resumo de uma edição de arquivo (diff) para o balão/card da atividade. Só contagens: o conteúdo completo fica no terminal. */
+export interface EditDiff {
+  /** Caminho do arquivo editado. */
+  file: string;
+  /** Quantas linhas foram adicionadas. */
+  added: number;
+  /** Quantas linhas foram removidas. */
+  removed: number;
+  /** O diff foi cortado (havia mais linhas do que o limite). */
+  truncated?: boolean;
+}
+
 export interface Activity {
   /** Único por atividade (ex.: uuid da entrada + índice do bloco). */
   id: string;
@@ -80,6 +93,8 @@ export interface Activity {
   text: string;
   /** Detalhe opcional (comando completo, caminho, consulta...), até ~300 caracteres. */
   detail?: string;
+  /** Resumo do diff de uma edição de arquivo (kind 'edit'/'write'), quando o evento o traz. */
+  diff?: EditDiff;
   /** Nome bruto da ferramenta, quando houver. */
   tool?: string;
   /** Epoch ms. */
@@ -335,6 +350,8 @@ export interface OfficeSnapshot {
   agents: AgentInfo[];
   /** Contas do Claude detectadas (com uso de 5h/semanal quando disponível). */
   accounts: AccountInfo[];
+  /** Tarefas headless gerenciadas do Cursor (P5); ausente/false quando o recurso está desligado. Aditivo. */
+  tasks?: CursorTaskInfo[];
   meta: {
     demo: boolean;
     sources: SourceInfo[];
@@ -355,9 +372,35 @@ export interface OfficeSnapshot {
      * desligar. Quem recebe agora diz AgentInfo.canMessage. Ausente/false = recurso desligado.
      */
     messages?: boolean;
+    /**
+     * Tarefas headless gerenciadas ligadas (POST/GET /api/tasks*): a mesma trava do terminal. A lista viaja em
+     * OfficeSnapshot.tasks. Ausente/false = recurso desligado.
+     */
+    tasks?: boolean;
     /** Verificação de versão nova no GitHub (ausente nos testes e no timelapse). */
     updates?: UpdateStatus;
   };
+}
+
+/** Tarefa headless gerenciada do Cursor (P5): aparece no snapshot e é observável como uma sessão comum. */
+export interface CursorTaskInfo {
+  id: string;
+  prompt: string;
+  mode: 'plan' | 'ask' | 'agent';
+  model?: string;
+  /** Agente do Office que representa a tarefa (observabilidade normal: status, atividade, terminal). */
+  agentId: string;
+  /** Sala (projeto de origem). */
+  roomId: string;
+  /** Rótulo: nome da tarefa ou da branch. */
+  label: string;
+  worktree?: string;
+  branch?: string;
+  status: 'starting' | 'running' | 'stopped' | 'failed' | 'done';
+  pid?: number;
+  sessionId?: string;
+  createdAt: number;
+  error?: string;
 }
 
 export interface FeedItem {

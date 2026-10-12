@@ -3,7 +3,7 @@
 // que o watcher informa.
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { appendFileSync, mkdirSync, renameSync, truncateSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, mkdirSync, renameSync, truncateSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { TerminalEntry, TerminalInit } from '../../shared/types';
@@ -12,9 +12,11 @@ import { isLoopbackBind, loadConfig, terminalOffReason } from '../config';
 import { setQuiet } from '../log';
 import { NameStore } from '../model/names';
 import { Office } from '../model/office';
+import { FileTail, type TailRead } from '../sources/tail';
 import type { TerminalParser } from '../sources/terminal';
+import { TranscriptHub } from '../sources/transcript-hub';
 import { ClaudeWatcher, encodeCwd } from '../sources/watcher';
-import { appendLines, L, tempDir, writeLines } from '../test/fixtures';
+import { appendLines, HAS_POSIX_MODES, L, tempDir, writeLines } from '../test/fixtures';
 import { createApiHandler } from './app';
 import { createRequestGuard } from './guard';
 import { Hub } from './sse';
@@ -91,6 +93,15 @@ function fakeParser(): TerminalParser {
       }
     },
   };
+}
+
+/** FileTail que conta leituras: prova "uma leitura por ciclo" no leitor compartilhado (SC-05). */
+class CountingTail extends FileTail {
+  reads = 0;
+  override read(): TailRead {
+    this.reads++;
+    return super.read();
+  }
 }
 
 const user = (id: string, text = id): TerminalEntry => ({ kind: 'user', id, at: 0, text });
@@ -303,6 +314,26 @@ describe('terminal: rota', () => {
       await env.close();
     }
   });
+
+  it.skipIf(!HAS_POSIX_MODES)('transcript ilegível: 500 JSON e nenhum stream aberto', async () => {
+    const env = await serve();
+    try {
+      const file = join(env.dir, 'sem-permissao.jsonl');
+      writeLines(file, [line('a')]);
+      chmodSync(file, 0o000);
+      try {
+        env.paths.set(MAIN, file);
+        const r = await open(env.base, route(MAIN));
+        expect(r.status).toBe(500);
+        expect(JSON.parse(r.body)).toEqual({ error: 'não foi possível ler o transcript' });
+        expect(env.terminals.size).toBe(0);
+      } finally {
+        chmodSync(file, 0o644);
+      }
+    } finally {
+      await env.close();
+    }
+  });
 });
 
 // ------------------------------------------------------------------ transporte
@@ -482,6 +513,62 @@ describe('terminal: transporte', () => {
       expect(env.office.get(MAIN)?.provider).toBeUndefined();
       sa.close();
       sb.close();
+    } finally {
+      await env.close();
+    }
+  });
+
+  it('dois terminais do mesmo agente compartilham o leitor do hub: uma leitura por ciclo (SC-05)', async () => {
+    const tails: CountingTail[] = [];
+    const hub = new TranscriptHub({
+      auto: false,
+      createTail: (p) => {
+        const t = new CountingTail(p);
+        tails.push(t);
+        return t;
+      },
+    });
+    const env = await serve({ streams: { hub } });
+    try {
+      const file = join(env.dir, 't.jsonl');
+      writeLines(file, []);
+      env.paths.set(MAIN, file);
+      const a = await open(env.base, route(MAIN));
+      const b = await open(env.base, route(MAIN));
+      await waitFor(() => expect(inits(a)).toHaveLength(1));
+      await waitFor(() => expect(inits(b)).toHaveLength(1));
+      expect(tails).toHaveLength(1); // um leitor no hub serve os dois terminais
+      appendLines(file, [line('nova')]);
+      hub.tick();
+      await waitFor(() => expect(view(a)).toEqual(['nova']));
+      await waitFor(() => expect(view(b)).toEqual(['nova']));
+      expect(tails[0].reads).toBe(1); // uma leitura por ciclo entregou aos dois
+      a.close();
+      b.close();
+    } finally {
+      hub.close();
+      await env.close();
+    }
+  });
+
+  it('reconexão do terminal: o init reconstrói o histórico e o append segue sem duplicar (SC-05)', async () => {
+    const env = await serve();
+    try {
+      const file = join(env.dir, 't.jsonl');
+      writeLines(file, [line('a'), line('b')]);
+      env.paths.set(MAIN, file);
+      const first = await open(env.base, route(MAIN));
+      await waitFor(() => expect(view(first)).toEqual(['a', 'b']));
+      first.close();
+      await waitFor(() => expect(env.terminals.size).toBe(0));
+      appendLines(file, [line('c')]);
+      const again = await open(env.base, route(MAIN));
+      await waitFor(() => expect(inits(again)).toHaveLength(1));
+      expect(view(again)).toEqual(['a', 'b', 'c']); // init reconstrói o histórico
+      appendLines(file, [line('d')]);
+      await waitFor(() => expect(view(again)).toEqual(['a', 'b', 'c', 'd']));
+      expect(new Set(view(again)).size).toBe(view(again).length); // sem entradas duplicadas
+      again.close();
     } finally {
       await env.close();
     }

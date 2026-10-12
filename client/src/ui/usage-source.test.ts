@@ -1,11 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import type { AccountInfo } from '../../../shared/types';
-import { cardState, codexUsageNote, showsUsageAge, sourceLabel, usageMessage, usageSubtitle } from './usage';
+import type { AccountInfo, Provider } from '../../../shared/types';
+import { cardState, codexUsageNote, showsUsageAge, sourceLabel, usageCardAccounts, usageCardsView, usageMessage, usageSubtitle } from './usage';
 
 const MIN = 60_000;
 type Acc = Pick<AccountInfo, 'usage' | 'usageStatus' | 'provider' | 'email' | 'plan' | 'configDir'>;
 const codex = (over: Partial<Acc> = {}): Acc => ({ provider: 'codex', usageStatus: 'ok', configDir: '~/.codex', plan: 'Team', ...over });
 const win = { utilization: 42, resetsAt: 10 * 60 * MIN };
+
+/** Conta mínima para o filtro dos cartões (só o `provider` importa). */
+const account = (provider?: Provider): AccountInfo => ({
+  id: provider === 'cursor' ? 'cursor' : 'a',
+  provider,
+  short: 'C',
+  name: 'Conta',
+  color: '#000',
+  configDir: '~/.claude',
+  sessions: 1,
+  usageStatus: 'disabled',
+});
 
 describe('sourceLabel', () => {
   it('diz quem gravou o uso ao vivo', () => {
@@ -48,5 +60,37 @@ describe('cartão de uso de uma conta do Codex', () => {
     expect(usageSubtitle({ email: 'a@b.c', configDir: '~/.claude' })).toBe('a@b.c');
     expect(usageSubtitle({ configDir: '~/.claude' })).toBe('~/.claude');
     expect(codexUsageNote({ usageStatus: 'ok' }, 0)).toBe('');
+  });
+});
+
+describe('usageCardAccounts (F5-01/F5-02 — Cursor sem cartão de uso)', () => {
+  it('a conta do Cursor sai; claude (sem provider) e codex permanecem', () => {
+    const claude = account();
+    const codexAcc = account('codex');
+    const cursor = account('cursor');
+    const result = usageCardAccounts([claude, codexAcc, cursor]);
+    expect(result).toEqual([claude, codexAcc]);
+    expect(result).not.toContain(cursor);
+  });
+
+  it('só contas do Cursor → lista vazia (a seção fica is-empty)', () => {
+    expect(usageCardAccounts([account('cursor'), account('cursor')])).toEqual([]);
+    expect(usageCardAccounts([])).toEqual([]);
+  });
+
+  it('contas sem provider (Claude Code) não são afetadas', () => {
+    const a = account();
+    expect(usageCardAccounts([a])).toEqual([a]);
+  });
+});
+
+describe('usageCardsView (F5-01/F5-02 — derivação do render)', () => {
+  it('cards sem o Cursor; empty quando não sobra conta (a seção fica is-empty)', () => {
+    const claude = account();
+    const codexAcc = account('codex');
+    const cursor = account('cursor');
+    expect(usageCardsView([claude, codexAcc, cursor])).toEqual({ cards: [claude, codexAcc], empty: false });
+    expect(usageCardsView([cursor])).toEqual({ cards: [], empty: true });
+    expect(usageCardsView([])).toEqual({ cards: [], empty: true });
   });
 });

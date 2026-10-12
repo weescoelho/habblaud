@@ -40,6 +40,10 @@
     "codex:uninstall": "tsx scripts/codex-install.ts uninstall",
     "codex:status": "tsx scripts/codex-install.ts status",
     "codex:bridge": "tsx scripts/codex-bridge.ts",
+    "cursor:install": "tsx scripts/cursor-install.ts install",
+    "cursor:uninstall": "tsx scripts/cursor-install.ts uninstall",
+    "cursor:status": "tsx scripts/cursor-install.ts status",
+    "cursor:setup": "tsx scripts/cursor-install.ts setup",
     "release": "tsx scripts/release.ts"
   },
   "devDependencies": {

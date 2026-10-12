@@ -15,6 +15,13 @@
 // conta no corpo). Diferenças: o agente casa pelo thread (agent_id ?? session_id) entre os agentes do Codex; sem
 // sugestões nem perguntas; recusar só com motivo (sem interromper); sem a busca da resposta no transcript (no Codex o
 // terminal só pede a aprovação depois que o hook termina, então ela nunca é respondida lá enquanto ele espera).
+//
+// O Cursor (hook de decisão mod/habblaud-cursor/hook.mjs, com `provider: "cursor"` e `session_id` = conversation_id)
+// reusa as mesmas rotas: o agente casa pela conversa entre os agentes do Cursor; sem perguntas e sem a busca da
+// resposta no transcript (como no Codex), recusar só com motivo (sem interromper); o título e o resumo saem da
+// tradução de ferramenta do Cursor (permissions/cursor.ts). Diferente do Codex, o Cursor ACEITA "sempre permitir":
+// o hook manda a regra derivada em `suggest_rule` e, ao escolher essa sugestão, o servidor grava a regra local
+// (permissions/cursor-rules.ts) — a emulação do `updatedPermissions` que o Cursor não tem.
 import { randomBytes } from 'node:crypto';
 import { describeTool, maskSecrets, truncate } from '../../shared/activity';
 import { ANSWER_OTHER_MAX, answerSummary, ASK_TOOL, checkAnswers } from '../../shared/answers';
@@ -22,6 +29,8 @@ import type { Activity, AgentInfo, PermissionAnswer, PermissionDecision, Permiss
 import { errMsg, log } from '../log';
 import { toolView } from '../sources/terminal';
 import { codexToolView } from './codex';
+import { cursorToolView } from './cursor';
+import type { CursorRule } from './cursor-rules';
 import { callSignature, scanToolCall } from './transcript';
 
 /** Tempo que o hook espera por padrão (ele manda o próprio em `timeout_ms`). */
@@ -41,6 +50,9 @@ export const SCAN_EVERY_MS = 1_000;
 /** Principal que esperava (diálogo aberto) e deixou de esperar há este tempo: respondeu no terminal. */
 export const LEFT_WAITING_MS = 3_000;
 export const MAX_PENDING = 32;
+
+/** Provedor que manda um pedido pelo hook (ausente = Claude Code). */
+export type HookProvider = 'codex' | 'cursor';
 
 const DESTINATIONS = new Set(['session', 'localSettings', 'projectSettings', 'userSettings']);
 const MAX_SUGGESTIONS = 4;
@@ -74,6 +86,11 @@ export interface RegistryOptions {
   demoDecide?: (id: string, d: PermissionDecision) => boolean;
   /** Detalhe de um pedido fictício do demo (o snapshot já o traz). */
   demoDetail?: (id: string) => PermissionRequestInfo | undefined;
+  /**
+   * Cursor: grava a regra local de "sempre permitir" ao aprovar com a sugestão (o Cursor não tem
+   * `updatedPermissions`). Best-effort: a falha de escrita não invalida a decisão já tomada.
+   */
+  persistCursorRule?: (rule: CursorRule) => void;
   now?: () => number;
   /** Intervalo do relógio interno (start). */
   tickMs?: number;
@@ -99,7 +116,7 @@ export type WaitResult =
 /**
  * invalid = sugestão de regra desconhecida; invalid-answer = decisão que não serve para o tipo de pedido (pergunta
  * se responde com `answer`, e só ela) ou respostas que não batem com as perguntas; unsupported = o Codex não aceita
- * (interromper ou "sempre permitir").
+ * interromper nem "sempre permitir", e o Cursor não aceita interromper.
  */
 export type DecideResult = 'ok' | 'not-found' | 'conflict' | 'invalid' | 'invalid-answer' | 'unsupported';
 
@@ -121,14 +138,14 @@ interface AskFormat {
 interface Pending {
   /** Versão completa (com `input`): GET /api/permissions/:id. */
   info: PermissionRequestInfo;
-  /** Pedido do Codex (sem a busca da resposta no transcript). */
-  codex?: boolean;
   /** Pergunta (AskUserQuestion): o formato de `tool_input.questions`, por posição (undefined = entrada inválida). */
   askFormat?: Array<AskFormat | undefined>;
   agentId: string;
   sessionId: string;
   /** agent_id do hook (pedido de subagente). */
   hookAgentId?: string;
+  /** Cursor: a regra local sugerida pelo hook (persistida ao escolher "sempre permitir"). */
+  cursorRule?: CursorRule;
   signature: string;
   toolUseId?: string;
   lastScanAt: number;
@@ -157,14 +174,21 @@ function isIndex(v: unknown): v is number {
   return typeof v === 'number' && Number.isInteger(v) && v >= 0;
 }
 
-/** Pedido que se responde com `answer` (as perguntas do AskUserQuestion; o Codex não as manda pelo hook). */
-function isQuestion(info: { tool: string; provider?: string }): boolean {
-  return info.tool === ASK_TOOL && info.provider !== 'codex';
+/** Pedido de um provedor cujo hook só aprova ou recusa (Codex/Cursor): sem perguntas, sugestões (o Cursor tem a própria) nem resposta no terminal. */
+function hookOnly(info: { provider?: string }): boolean {
+  return info.provider === 'codex' || info.provider === 'cursor';
 }
 
-/** O Codex não aceita interromper nem "sempre permitir" (o hook dele só aprova ou recusa com motivo). */
-function unsupportedByCodex(info: PermissionRequestInfo, d: PermissionDecision): boolean {
-  return info.provider === 'codex' && (d.interrupt === true || d.suggestion !== undefined);
+/** Pergunta que se responde com `answer` (as perguntas do AskUserQuestion; nem o Codex nem o Cursor as mandam pelo hook). */
+function isQuestion(info: { tool: string; provider?: string }): boolean {
+  return info.tool === ASK_TOOL && !hookOnly(info);
+}
+
+/** Codex: nem interromper nem "sempre permitir". Cursor: só interromper é recusado ("sempre permitir" é emulado). */
+function unsupportedByProvider(info: PermissionRequestInfo, d: PermissionDecision): boolean {
+  if (info.provider === 'codex') return d.interrupt === true || d.suggestion !== undefined;
+  if (info.provider === 'cursor') return d.interrupt === true;
+  return false;
 }
 
 /**
@@ -215,6 +239,26 @@ function ruleText(raw: unknown): string | undefined {
   return truncate(maskSecrets(content ? `${tool}(${content})` : tool), RULE_MAX);
 }
 
+/** Texto de exibição de uma regra local do Cursor: "Shell(npm test)". */
+function cursorRuleText(rule: CursorRule): string {
+  return truncate(maskSecrets(`${rule.tool}(${rule.note ?? rule.pattern})`), RULE_MAX);
+}
+
+/**
+ * Regra local derivada que o hook do Cursor manda em `suggest_rule` (a partir do pedido). Validada aqui: só
+ * `tool`/`pattern` curtos; o `effect` é sempre `allow` (o hook não sugere `deny`).
+ */
+function parseCursorRule(raw: unknown): CursorRule | undefined {
+  const r = rec(raw);
+  const tool = shortStr(r?.tool, 200);
+  const pattern = shortStr(r?.pattern, 400);
+  if (!tool || !pattern) return undefined;
+  const rule: CursorRule = { tool, pattern, effect: 'allow' };
+  const note = shortStr(r?.note, 200);
+  if (note) rule.note = note;
+  return rule;
+}
+
 /**
  * Sugestões "sempre permitir" que o Habblaud oferece: só `addRules` com `behavior: "allow"` num destino
  * conhecido. A página escolhe pela posição e o hook aplica a sugestão ORIGINAL que recebeu do Claude Code
@@ -252,10 +296,11 @@ export function applyPermission(a: AgentInfo, p: PermissionRequestInfo | undefin
 /**
  * Valida o JSON do hook (o mesmo que o Claude Code entrega no stdin, com `timeout_ms` do hook). O hook do Codex manda
  * também `provider: "codex"`, a conta (`account`, o basename do CODEX_HOME) e o caminho dela (`codexHome`); nele,
- * `agent_id` é o thread do subagente (e `session_id`, o thread raiz).
+ * `agent_id` é o thread do subagente (e `session_id`, o thread raiz). O hook do Cursor manda `provider: "cursor"` e a
+ * `conversation_id` no `session_id` (aceita também `conversation_id` direto, como alias defensivo).
  */
 export function parseHookInput(raw: unknown): {
-  provider?: 'codex';
+  provider?: HookProvider;
   account?: string;
   codexHome?: string;
   sessionId: string;
@@ -265,23 +310,28 @@ export function parseHookInput(raw: unknown): {
   tool: string;
   input: Rec;
   suggestions: unknown;
+  cursorRule?: CursorRule;
   timeoutMs: number;
 } {
   const r = rec(raw);
-  const sessionId = shortStr(r?.session_id, 200);
+  const provider = r?.provider === 'codex' ? 'codex' : r?.provider === 'cursor' ? 'cursor' : undefined;
+  const sessionId = shortStr(r?.session_id, 200) ?? (provider === 'cursor' ? shortStr(r?.conversation_id, 200) : undefined);
   const tool = shortStr(r?.tool_name, 200);
   if (!r || !sessionId || !tool) throw new InvalidRequest('esperado o JSON do hook PermissionRequest (session_id e tool_name)');
   const t = typeof r.timeout_ms === 'number' && Number.isFinite(r.timeout_ms) ? r.timeout_ms : DEFAULT_TIMEOUT_MS;
-  const codex = r.provider === 'codex';
   return {
-    ...(codex ? { provider: 'codex' as const, account: shortStr(r.account, 200), codexHome: shortStr(r.codexHome, 4_096) } : {}),
+    ...(provider === 'codex'
+      ? { provider: 'codex' as const, account: shortStr(r.account, 200), codexHome: shortStr(r.codexHome, 4_096) }
+      : provider === 'cursor'
+        ? { provider: 'cursor' as const, cursorRule: parseCursorRule(r.suggest_rule) }
+        : {}),
     sessionId,
     agentId: shortStr(r.agent_id, 200),
     agentType: shortStr(r.agent_type, 120),
     cwd: shortStr(r.cwd, 4_096),
     tool,
     input: rec(r.tool_input) ?? {},
-    suggestions: codex ? undefined : r.permission_suggestions,
+    suggestions: provider ? undefined : r.permission_suggestions,
     timeoutMs: Math.min(MAX_TIMEOUT_MS, Math.max(MIN_TIMEOUT_MS, t)),
   };
 }
@@ -383,43 +433,48 @@ export class PermissionRegistry {
   register(raw: unknown): RegisterResult {
     const req = parseHookInput(raw);
     const codex = req.provider === 'codex';
-    const desc = codex ? codexToolView(req.tool, req.input, req.cwd) : describeTool(req.tool, req.input);
+    const cursor = req.provider === 'cursor';
+    const desc = cursor ? cursorToolView(req.tool, req.input, req.cwd) : codex ? codexToolView(req.tool, req.input, req.cwd) : describeTool(req.tool, req.input);
     const questions = 'questions' in desc ? desc.questions : undefined;
     const ask = isQuestion(req);
     // Pergunta: todas precisam aparecer no escritório (o hook só responde se cada uma tiver resposta).
     if (ask && (!questions?.length || questions.length !== askCount(req.input.questions))) return { skip: 'unsupported-tool' };
     if (this.opts.viewers() <= 0) return { skip: 'no-viewers' };
-    const target = codex
-      ? this.resolveCodexAgent(req.sessionId, req.agentId, req.agentType, this.opts.codexAccount?.(req.account, req.codexHome) ?? req.account)
-      : this.resolveAgent(req.sessionId, req.agentId, req.agentType);
+    const target = cursor
+      ? this.resolveCursorAgent(req.sessionId)
+      : codex
+        ? this.resolveCodexAgent(req.sessionId, req.agentId, req.agentType, this.opts.codexAccount?.(req.account, req.codexHome) ?? req.account)
+        : this.resolveAgent(req.sessionId, req.agentId, req.agentType);
     if (!target) return { skip: 'unknown-session' };
     if (this.size >= this.maxPending) return { skip: 'too-many' };
 
     const now = this.now();
     const id = `p-${now.toString(36)}-${++this.seq}-${randomBytes(9).toString('base64url')}`;
-    // Codex: título, resumo e argumentos pelos nomes de ferramenta dele (permissions/codex.ts).
+    // Codex/Cursor: título, resumo e argumentos pelos nomes de ferramenta deles (permissions/codex.ts e cursor.ts).
     const view = 'title' in desc ? desc : toolView(req.tool, req.input, req.cwd);
     const info: PermissionRequestInfo = { id, tool: req.tool, title: view.title, text: desc.text, icon: desc.icon, createdAt: now, expiresAt: now + req.timeoutMs };
     if (codex) info.provider = 'codex';
+    else if (cursor) info.provider = 'cursor';
     if (view.input) info.input = view.input;
     if (view.inputKind) info.inputKind = view.inputKind;
     if (target.subagent) info.subagent = target.subagent;
     const suggestions = pickSuggestions(req.suggestions);
     if (suggestions.length) info.suggestions = suggestions;
+    else if (cursor && req.cursorRule) info.suggestions = [{ index: 0, rules: [cursorRuleText(req.cursorRule)], destination: 'habblaud' }];
     if (ask) info.questions = questions;
 
     const p: Pending = {
       info,
       agentId: target.id,
       sessionId: req.sessionId,
-      signature: codex ? '' : callSignature(req.tool, req.input),
+      signature: req.provider ? '' : callSignature(req.tool, req.input),
       lastScanAt: 0,
       waiters: new Set(),
       idleSince: now,
     };
-    if (codex) p.codex = true;
     if (req.agentId) p.hookAgentId = req.agentId;
     if (ask) p.askFormat = askFormat(req.input.questions);
+    if (cursor && req.cursorRule) p.cursorRule = req.cursorRule;
     this.pending.set(id, p);
 
     const by = target.subagent ? ` (subagente ${target.subagent})` : '';
@@ -492,12 +547,12 @@ export class PermissionRegistry {
     const p = this.pending.get(id);
     if (!p) {
       const demo = this.opts.demoDetail?.(id);
-      if (demo && unsupportedByCodex(demo, d)) return 'unsupported';
+      if (demo && unsupportedByProvider(demo, d)) return 'unsupported';
       if (demo && (wrongKind(demo, d) || (d.behavior === 'answer' && !checkAnswers(demo.questions ?? [], d.answers)))) return 'invalid-answer';
       return this.opts.demoDecide?.(id, d) ? 'ok' : 'not-found';
     }
     if (p.outcome) return 'conflict';
-    if (unsupportedByCodex(p.info, d)) return 'unsupported';
+    if (unsupportedByProvider(p.info, d)) return 'unsupported';
     if (d.suggestion !== undefined && !p.info.suggestions?.some((s) => s.index === d.suggestion)) return 'invalid';
     if (d.behavior === 'terminal') {
       this.release(p, 'terminal');
@@ -510,6 +565,8 @@ export class PermissionRegistry {
     if (d.interrupt) outcome.interrupt = true;
     if (d.suggestion !== undefined) outcome.suggestion = d.suggestion;
     this.resolve(p, outcome);
+    // Cursor: "sempre permitir" grava a regra local derivada (emula o `updatedPermissions` que ele não tem).
+    if (d.suggestion !== undefined && p.cursorRule) this.opts.persistCursorRule?.(p.cursorRule);
     const now = this.now();
     const act: Activity =
       d.behavior === 'allow'
@@ -544,8 +601,8 @@ export class PermissionRegistry {
       if (now >= p.info.expiresAt + EXPIRY_GRACE_MS) this.release(p, 'expired');
       else if (!p.waiters.size && now - p.idleSince >= this.orphanMs) this.release(p, 'orphan');
       else if (!present(this.opts.office.get(p.agentId))) this.release(p, 'gone');
-      // No Codex o terminal só pede a aprovação depois que o hook termina: não há resposta dada lá para procurar.
-      else if (p.codex) continue;
+      // No Codex/Cursor o terminal só decide depois que o hook termina: não há resposta dada lá para procurar.
+      else if (hookOnly(p.info)) continue;
       else if (now - p.lastScanAt >= SCAN_EVERY_MS && this.answeredInTerminal(p, now)) this.release(p, 'answered');
       else if (this.leftWaiting(p, now)) this.release(p, 'answered');
     }
@@ -581,6 +638,15 @@ export class PermissionRegistry {
     const main = find(sessionId);
     if (!main) return undefined;
     return sub ? { id: main.id, subagent: agentType ?? 'subagente' } : { id: main.id };
+  }
+
+  /**
+   * Agente do Cursor de um pedido: o da conversa (`session_id`, que o hook manda como o `conversation_id`). O Cursor
+   * tem conta única e nenhum subagente no MVP: basta achar o principal presente com essa conversa.
+   */
+  private resolveCursorAgent(sessionId: string): { id: string; subagent?: string } | undefined {
+    const main = this.opts.office.list().find((a) => a.kind === 'main' && a.provider === 'cursor' && a.sessionId === sessionId && present(a));
+    return main ? { id: main.id } : undefined;
   }
 
   private queueOf(p: Pending): { queued?: number } {

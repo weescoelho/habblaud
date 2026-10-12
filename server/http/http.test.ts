@@ -1,13 +1,15 @@
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ModSummary, OfficeSnapshot, PermissionRequestInfo, UpdateStatus } from '../../shared/types';
+import type { ModSummary, OfficeSnapshot, PermissionRequestInfo, UpdateStatus, CursorTaskInfo } from '../../shared/types';
 import { AccountsService } from '../accounts/service';
 import { setQuiet } from '../log';
 import { NameStore } from '../model/names';
 import { Office, type OfficeDeps } from '../model/office';
+import { MISSING_BIN, type TaskHost, type TaskInput, type TaskRemoveResult } from '../sources/cursor/tasks';
 import { tempDir } from '../test/fixtures';
 import { createApiHandler, type ApiDeps } from './app';
 import { createRequestGuard, hostAllowed, hostnameOf, isLoopbackHost, originAllowed, parseAllowedHosts } from './guard';
@@ -22,7 +24,11 @@ interface Env {
   close: () => Promise<void>;
 }
 
-async function start(extra: Partial<ApiDeps> = {}, officeExtra: Partial<OfficeDeps> = {}): Promise<Env & { cleanup: () => void }> {
+async function start(
+  extra: Partial<ApiDeps> = {},
+  officeExtra: Partial<OfficeDeps> = {},
+  bind = '127.0.0.1',
+): Promise<Env & { cleanup: () => void }> {
   const tmp = tempDir();
   const dir = join(tmp.dir, '.claude');
   mkdirSync(join(dir, 'sessions'), { recursive: true });
@@ -55,11 +61,11 @@ async function start(extra: Partial<ApiDeps> = {}, officeExtra: Partial<OfficeDe
     const url = new URL(req.url ?? '/', 'http://x');
     if (!api(req, res, url)) serveStatic(req, res, url.pathname);
   });
-  await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
+  await new Promise<void>((ok) => server.listen(0, bind, ok));
   const port = (server.address() as AddressInfo).port;
   office.addMain({ id: '.claude:1', account: '.claude', sessionId: 's1', cwd: '/p/loja', role: 'Agente principal', startedAt: Date.now(), status: 'working' });
   return {
-    base: `http://127.0.0.1:${port}`,
+    base: `http://${bind === '0.0.0.0' ? '127.0.0.1' : bind}:${port}`,
     office,
     close: () =>
       new Promise((ok) => {
@@ -76,6 +82,14 @@ async function snapshotOf(base: string): Promise<OfficeSnapshot> {
 }
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
+
+/** Primeiro IPv4 de rede (não-loopback) da máquina, para provar a trava de conexão local. Sem ele, o caso remoto é pulado. */
+function nonLoopbackIPv4(): string | undefined {
+  for (const list of Object.values(os.networkInterfaces())) {
+    for (const i of list ?? []) if (i.family === 'IPv4' && !i.internal) return i.address;
+  }
+  return undefined;
+}
 
 /** Requisição crua (o fetch não deixa trocar o cabeçalho Host). */
 function raw(base: string, path: string, opts: { method?: string; headers?: Record<string, string>; body?: string } = {}): Promise<{ status: number; body: string }> {
@@ -268,6 +282,114 @@ describe('API HTTP', () => {
   });
 });
 
+describe('POST /api/cursor/events (eventos dos hooks do Cursor)', () => {
+  const LAN = nonLoopbackIPv4();
+
+  it('repassa o evento à fonte do Cursor e devolve {ok}; sem a fonte, {ok:false}', async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const live = await start({ cursorLive: { applyHookEvent: (e) => (calls.push(e), true) } });
+    try {
+      const res = await fetch(`${live.base}/api/cursor/events`, {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ event: { hook_event_name: 'sessionStart', conversation_id: 'c1', workspace_roots: ['/p/loja'] } }),
+      });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true });
+      expect(calls).toEqual([{ hook_event_name: 'sessionStart', conversation_id: 'c1', workspace_roots: ['/p/loja'] }]);
+      expect(((await (await fetch(`${live.base}/api/health`)).json()) as { cursorEvents: boolean }).cursorEvents).toBe(true);
+    } finally {
+      await live.close();
+      live.cleanup();
+    }
+
+    const off = await start();
+    try {
+      const res = await fetch(`${off.base}/api/cursor/events`, {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ event: { hook_event_name: 'sessionStart' } }),
+      });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: false });
+      expect(((await (await fetch(`${off.base}/api/health`)).json()) as { cursorEvents: boolean }).cursorEvents).toBe(false);
+    } finally {
+      await off.close();
+      off.cleanup();
+    }
+  });
+
+  it('a fonte que lança não derruba a rota: 200 {ok:false}', async () => {
+    const env = await start({
+      cursorLive: {
+        applyHookEvent: () => {
+          throw new Error('quebrou');
+        },
+      },
+    });
+    try {
+      const res = await fetch(`${env.base}/api/cursor/events`, {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ event: { hook_event_name: 'preToolUse' } }),
+      });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: false });
+    } finally {
+      await env.close();
+      env.cleanup();
+    }
+  });
+
+  it('Host que não é local: 403; GET: 405; sem JSON: 415; corpo inválido: 400; acima de 256 KB: 413', async () => {
+    const calls: unknown[] = [];
+    const env = await start({ cursorLive: { applyHookEvent: (e) => (calls.push(e), true) } });
+    try {
+      const port = new URL(env.base).port;
+      for (const host of [`habblaud.lan:${port}`, `192.168.0.10:${port}`]) {
+        const r = await raw(env.base, '/api/cursor/events', {
+          method: 'POST',
+          headers: { ...JSON_HEADERS, Host: host },
+          body: JSON.stringify({ event: { hook_event_name: 'sessionStart' } }),
+        });
+        expect(r.status, host).toBe(403);
+        expect(r.body).toMatch(/próprio computador/);
+      }
+      expect((await fetch(`${env.base}/api/cursor/events`)).status).toBe(405);
+      expect((await raw(env.base, '/api/cursor/events', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: '{}' })).status).toBe(415);
+      for (const body of [{}, { event: 'x' }, { event: {} }, { event: { hook_event_name: 1 } }, []]) {
+        const r = await fetch(`${env.base}/api/cursor/events`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body) });
+        expect(r.status, JSON.stringify(body)).toBe(400);
+      }
+      const big = JSON.stringify({ event: { hook_event_name: 'sessionStart', padding: 'x'.repeat(300 * 1024) } });
+      expect((await raw(env.base, '/api/cursor/events', { method: 'POST', headers: JSON_HEADERS, body: big })).status).toBe(413);
+      expect(calls).toHaveLength(0);
+    } finally {
+      await env.close();
+      env.cleanup();
+    }
+  });
+
+  it.skipIf(!LAN)('conexão pelo endereço de rede (não-loopback) é 403 mesmo com Host local', async () => {
+    const calls: unknown[] = [];
+    const env = await start({ cursorLive: { applyHookEvent: (e) => (calls.push(e), true) } }, {}, LAN);
+    try {
+      const port = new URL(env.base).port;
+      const r = await raw(env.base, '/api/cursor/events', {
+        method: 'POST',
+        headers: { ...JSON_HEADERS, Host: `127.0.0.1:${port}` },
+        body: JSON.stringify({ event: { hook_event_name: 'sessionStart', conversation_id: 'c1' } }),
+      });
+      expect(r.status).toBe(403);
+      expect(r.body).toMatch(/próprio computador/);
+      expect(calls).toHaveLength(0);
+    } finally {
+      await env.close();
+      env.cleanup();
+    }
+  });
+});
+
 describe('personagem do projeto (PUT/DELETE /api/agents/:id/character)', () => {
   let env: Awaited<ReturnType<typeof start>>;
   beforeEach(async () => {
@@ -436,5 +558,164 @@ describe('guarda de Host/Origin', () => {
     expect(originAllowed('http://1.2.3.4', 'localhost:4747', allowed)).toBe(false);
     expect(originAllowed('null', 'localhost:4747', allowed)).toBe(false);
     expect(originAllowed('file://', 'localhost:4747', allowed)).toBe(false);
+  });
+});
+
+describe('tarefas headless (/api/tasks*)', () => {
+  const taskInfo = (over: Partial<CursorTaskInfo> = {}): CursorTaskInfo => ({
+    id: 'task-1',
+    prompt: 'arruma a loja',
+    mode: 'plan',
+    agentId: 'cursor:task:task-1',
+    roomId: 'loja',
+    label: 'arruma a loja',
+    status: 'running',
+    createdAt: 1,
+    ...over,
+  });
+
+  /** Host mínimo: cada caso troca só os métodos que importam. */
+  const host0 = (over: Partial<TaskHost> = {}): TaskHost => ({
+    tasks: () => [],
+    createTask: async () => taskInfo(),
+    stopTask: () => undefined,
+    resumeTask: async () => undefined,
+    removeTask: async () => ({ removed: false, reason: 'missing' }),
+    ...over,
+  });
+
+  it('GET /api/tasks devolve a lista; sem o host, 403', async () => {
+    const off = await start();
+    try {
+      const res = await fetch(`${off.base}/api/tasks`);
+      expect(res.status).toBe(403);
+      expect(((await res.json()) as { error: string }).error).toMatch(/desligadas/);
+    } finally {
+      await off.close();
+      off.cleanup();
+    }
+
+    const on = await start({ tasks: host0({ tasks: () => [taskInfo(), taskInfo({ id: 'task-2', agentId: 'cursor:task:task-2', status: 'done' })] }) });
+    try {
+      const res = await fetch(`${on.base}/api/tasks`);
+      expect(res.status).toBe(200);
+      expect(((await res.json()) as { tasks: CursorTaskInfo[] }).tasks.map((t) => [t.id, t.status])).toEqual([
+        ['task-1', 'running'],
+        ['task-2', 'done'],
+      ]);
+    } finally {
+      await on.close();
+      on.cleanup();
+    }
+  });
+
+  it('POST /api/tasks cria (201 {task}) com prompt/modo/modelo/isolada; 400 para corpo inválido', async () => {
+    const seen: TaskInput[] = [];
+    const host = host0({
+      createTask: async (input) => (seen.push(input), taskInfo({ prompt: input.prompt, mode: input.mode ?? 'plan', label: input.label ?? input.prompt })),
+    });
+    const env = await start({ tasks: host });
+    try {
+      const res = await fetch(`${env.base}/api/tasks`, {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ prompt: '  arruma a loja  ', cwd: '/p/loja', mode: 'agent', model: 'gpt', label: 'Loja', isolated: false, force: true }),
+      });
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual({ task: taskInfo({ prompt: 'arruma a loja', mode: 'agent', label: 'Loja' }) });
+      expect(seen).toEqual([{ prompt: 'arruma a loja', cwd: '/p/loja', mode: 'agent', model: 'gpt', label: 'Loja', isolated: false, force: true }]);
+
+      for (const body of [{}, { prompt: '' }, { prompt: 'x' }, { prompt: 'x', cwd: '' }, { prompt: 'x', cwd: '/p', mode: 'turbo' }, { prompt: 'x', cwd: '/p', isolated: 'no' }, { prompt: 'x', cwd: '/p', force: 1 }]) {
+        const bad = await fetch(`${env.base}/api/tasks`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body) });
+        expect(bad.status, JSON.stringify(body)).toBe(400);
+      }
+      expect(seen).toHaveLength(1);
+    } finally {
+      await env.close();
+      env.cleanup();
+    }
+  });
+
+  it('POST /api/tasks: falha de lançamento vira 409 com o erro acionável', async () => {
+    const env = await start({ tasks: host0({ createTask: async () => taskInfo({ status: 'failed', error: MISSING_BIN }) }) });
+    try {
+      const res = await fetch(`${env.base}/api/tasks`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ prompt: 'x', cwd: '/p' }) });
+      expect(res.status).toBe(409);
+      expect(((await res.json()) as { error: string }).error).toBe(MISSING_BIN);
+    } finally {
+      await env.close();
+      env.cleanup();
+    }
+  });
+
+  it('POST /api/tasks/:id/stop e /resume refletem a tarefa; id desconhecido 404; retomada falha 409', async () => {
+    const host = host0({
+      stopTask: (id) => (id === 'task-1' ? taskInfo({ status: 'stopped' }) : undefined),
+      resumeTask: async (id) => (id === 'task-1' ? taskInfo({ status: 'running' }) : id === 'task-failed' ? taskInfo({ id, status: 'failed', error: MISSING_BIN }) : undefined),
+    });
+    const env = await start({ tasks: host });
+    try {
+      const stop = await fetch(`${env.base}/api/tasks/task-1/stop`, { method: 'POST', headers: JSON_HEADERS, body: '{}' });
+      expect(stop.status).toBe(200);
+      expect(((await stop.json()) as { task: CursorTaskInfo }).task).toMatchObject({ id: 'task-1', status: 'stopped' });
+      expect((await fetch(`${env.base}/api/tasks/nope/stop`, { method: 'POST', headers: JSON_HEADERS, body: '{}' })).status).toBe(404);
+
+      const resume = await fetch(`${env.base}/api/tasks/task-1/resume`, { method: 'POST', headers: JSON_HEADERS, body: '{}' });
+      expect(resume.status).toBe(200);
+      expect(((await resume.json()) as { task: CursorTaskInfo }).task).toMatchObject({ id: 'task-1', status: 'running' });
+      expect((await fetch(`${env.base}/api/tasks/nope/resume`, { method: 'POST', headers: JSON_HEADERS, body: '{}' })).status).toBe(404);
+      const failed = await fetch(`${env.base}/api/tasks/task-failed/resume`, { method: 'POST', headers: JSON_HEADERS, body: '{}' });
+      expect(failed.status).toBe(409);
+      expect(((await failed.json()) as { error: string }).error).toBe(MISSING_BIN);
+    } finally {
+      await env.close();
+      env.cleanup();
+    }
+  });
+
+  it('DELETE /api/tasks/:id: removed 200; missing 404; dirty/failed 409', async () => {
+    const reasons: Record<string, TaskRemoveResult> = {
+      'task-1': { removed: true },
+      'task-dirty': { removed: false, reason: 'dirty' },
+      'task-fail': { removed: false, reason: 'failed' },
+    };
+    const env = await start({ tasks: host0({ removeTask: async (id) => reasons[id] ?? { removed: false, reason: 'missing' } }) });
+    try {
+      const ok = await fetch(`${env.base}/api/tasks/task-1`, { method: 'DELETE', headers: JSON_HEADERS });
+      expect(ok.status).toBe(200);
+      expect(await ok.json()).toEqual({ removed: true });
+      expect((await fetch(`${env.base}/api/tasks/nope`, { method: 'DELETE', headers: JSON_HEADERS })).status).toBe(404);
+      for (const id of ['task-dirty', 'task-fail']) {
+        const conflict = await fetch(`${env.base}/api/tasks/${id}`, { method: 'DELETE', headers: JSON_HEADERS });
+        expect(conflict.status, id).toBe(409);
+        expect(((await conflict.json()) as { error: string }).error).toMatch(/preservada|remover/);
+      }
+    } finally {
+      await env.close();
+      env.cleanup();
+    }
+  });
+
+  it('trava local e método: Host remoto 403; método errado 405 com Allow', async () => {
+    const env = await start({ tasks: host0() });
+    try {
+      const port = new URL(env.base).port;
+      const remote = await raw(env.base, '/api/tasks', { headers: { Host: `habblaud.lan:${port}` } });
+      expect(remote.status).toBe(403);
+      expect(remote.body).toMatch(/próprio computador/);
+
+      const list = await fetch(`${env.base}/api/tasks`, { method: 'PUT', headers: JSON_HEADERS });
+      expect(list.status).toBe(405);
+      expect(list.headers.get('allow')).toBe('GET, POST');
+      const one = await fetch(`${env.base}/api/tasks/task-1`, { method: 'GET' });
+      expect(one.status).toBe(405);
+      expect(one.headers.get('allow')).toBe('DELETE');
+      const stopGet = await fetch(`${env.base}/api/tasks/task-1/stop`);
+      expect(stopGet.status).toBe(405);
+      expect(stopGet.headers.get('allow')).toBe('POST');
+    } finally {
+      await env.close();
+      env.cleanup();
+    }
   });
 });

@@ -1,5 +1,6 @@
-// De qual ferramenta é cada coisa (Claude Code ou Codex) e os textos que mudam com ela. Puro (sem DOM): testado em
-// ui/provider.test.ts. No protocolo, `provider` ausente quer dizer Claude Code (shared/types.ts); aqui tudo cai nisso.
+// De qual ferramenta é cada coisa (Claude Code, Codex ou Cursor) e os textos que mudam com ela. Puro (sem DOM):
+// testado em ui/provider.test.ts. No protocolo, `provider` ausente quer dizer Claude Code (shared/types.ts); aqui tudo
+// cai nisso.
 //
 // Identidade visual do Codex (sem logotipo de ninguém): o chip da conta fica "vazado" (fundo escuro, borda e letra na
 // cor da conta, cantos em degrau) e, onde há espaço, um selo de texto "Codex" ao lado do nome.
@@ -7,7 +8,7 @@ import type { AccountInfo, OfficeSnapshot, Provider } from '../../../shared/type
 import { shortcutHint } from './model';
 
 /** Nome de cada ferramenta como aparece nos textos. */
-export const PROVIDER_NAME: Record<Provider, string> = { claude: 'Claude Code', codex: 'Codex' };
+export const PROVIDER_NAME: Record<Provider, string> = { claude: 'Claude Code', codex: 'Codex', cursor: 'Cursor' };
 
 /** Ferramenta de um agente, conta, sessão ou pedido (ausente = Claude Code). */
 export function providerOf(x: { provider?: Provider } | null | undefined): Provider {

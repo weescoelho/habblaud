@@ -106,6 +106,18 @@ export function sessionKey(account: string, sessionId: string): string {
   return `session:${account}:${sessionId}`;
 }
 
+/**
+ * Com o terminal ao vivo aberto, a seleção de outro agente troca a conversa. Histórico, sala ou o mesmo
+ * agente: não mexe. Devolve o id a abrir, ou undefined.
+ */
+export function followTerminalAgent(
+  openAgentId: string | null,
+  selected: { type: string; id: string } | null,
+): string | undefined {
+  if (!openAgentId || selected?.type !== 'agent' || selected.id === openAgentId) return undefined;
+  return selected.id;
+}
+
 /** Nome curto do projeto de uma sessão: a última pasta do cwd (ou o nome codificado da pasta em projects/). */
 export function sessionProjectName(s: Pick<RecentSession, 'project' | 'projectDir'>): string {
   const path = s.project?.replace(/[\\/]+$/, '');
@@ -782,6 +794,12 @@ export class TerminalPanel implements UiComponent, TerminalControl {
     else this.open(agentId, opener);
   }
 
+  /** Troca a conversa se o terminal já estiver aberto noutro agente ao vivo. Não abre sozinho e não foca. */
+  followSelection(selected: { type: string; id: string } | null): void {
+    const id = followTerminalAgent(this.agentId, selected);
+    if (id) this.start(id, null, this.opener, false);
+  }
+
   /** Esc: o primeiro fecha a busca; o seguinte, o terminal. Devolve false se não havia nada aberto. */
   escape(): boolean {
     if (this.id === null) return false;
@@ -801,10 +819,10 @@ export class TerminalPanel implements UiComponent, TerminalControl {
   }
 
   /** Abre o painel numa conversa nova (agente ou sessão do histórico); a mesma conversa só recebe o foco. */
-  private start(id: string, session: RecentSession | null, opener: HTMLElement | null): void {
+  private start(id: string, session: RecentSession | null, opener: HTMLElement | null, focus = true): void {
     if (opener && !this.el.contains(opener)) this.opener = opener;
     if (this.id === id) {
-      this.focusLog();
+      if (focus) this.focusLog();
       return;
     }
     // Um terminal por vez: abrir outro substitui o atual (a busca e o filtro continuam valendo).
@@ -823,7 +841,7 @@ export class TerminalPanel implements UiComponent, TerminalControl {
     this.el.classList.toggle('is-session', !!session);
     this.connect();
     this.render();
-    this.focusLog();
+    if (focus) this.focusLog();
     this.ctx.invalidate();
   }
 

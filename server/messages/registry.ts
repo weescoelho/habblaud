@@ -50,6 +50,7 @@ export const ERR_CODEX_SLOW = 'o Codex demorou demais com as mensagens anteriore
 export const ERR_CODEX_NOT_CONFIRMED = 'o auxiliar do Codex não confirmou a entrega';
 export const ERR_CODEX_HOME = 'a pasta da conta do Codex deste agente é desconhecida';
 export const ERR_CODEX_REFUSED = 'o codex queue não aceitou a mensagem';
+export const ERR_CURSOR_UNAVAILABLE = 'o Cursor não recebe mensagens pelo escritório: responda na conversa';
 
 const ERROR_MAX = 300;
 const ID_MAX = 300;
@@ -118,6 +119,8 @@ interface Entry {
   demo?: boolean;
   /** Mensagem a um agente do Codex: sai pelo entregador do Codex ('node' = o servidor rodou; 'bridge' = o auxiliar). */
   codex?: true;
+  /** Mensagem antiga marcada como Cursor. O escritório não entrega mais para esse provedor. */
+  cursor?: true;
   via?: 'node' | 'bridge';
   /** Falhou por falta de confirmação: uma confirmação atrasada ainda corrige a situação. */
   late?: boolean;
@@ -146,8 +149,12 @@ const isFinal = (e: Entry) => e.msg.status === 'delivered' || e.msg.status === '
  */
 function unavailableReason(a: AgentInfo, reachable: boolean): string | undefined {
   if (a.kind !== 'main') return 'subagentes não recebem mensagens: mande para o agente principal';
+  if (a.provider === 'cursor') return ERR_CURSOR_UNAVAILABLE;
   if (!present(a)) return 'o agente já saiu do escritório';
-  if (!reachable) return a.provider === 'codex' ? ERR_CODEX_UNAVAILABLE : 'a sessão não está com o plugin habblaud-mensagens conectado (npm run mod:install)';
+  if (!reachable) {
+    if (a.provider === 'codex') return ERR_CODEX_UNAVAILABLE;
+    return 'a sessão não está com o plugin habblaud-mensagens conectado (npm run mod:install)';
+  }
   return undefined;
 }
 
@@ -268,6 +275,7 @@ export class MessageRegistry {
     const entry: Entry = { msg: { id, agentId, status: 'queued', createdAt: now, updatedAt: now }, text, activity: describeMessage(text) };
     if (demo) entry.demo = true;
     else if (real?.provider === 'codex') entry.codex = true;
+    else if (real?.provider === 'cursor') entry.cursor = true;
     this.messages.set(id, entry);
     const out = { ...entry.msg };
     if (entry.codex) this.pumpCodex();
@@ -304,13 +312,24 @@ export class MessageRegistry {
     const out: InboxMessage[] = [];
     for (const e of this.messages.values()) {
       if (out.length >= INBOX_BATCH) break;
-      if (e.demo || e.codex || e.msg.agentId !== agent.id || e.msg.status !== 'queued') continue;
+      if (e.demo || e.codex || e.cursor || e.msg.agentId !== agent.id || e.msg.status !== 'queued') continue;
       this.setStatus(e, 'sent', now);
       e.session = session;
       e.sentAt = now;
       out.push({ id: e.msg.id, text: e.text });
     }
     return out;
+  }
+
+  /**
+   * POST /api/cursor/inbox. Não entrega mensagem e não marca presença: injetar texto no `stop` travava a IDE e
+   * não entrava na conversa. Corpo inválido ainda lança, para o hook antigo não confundir erro com sucesso.
+   */
+  cursorPoll(raw: unknown): { message?: InboxMessage; locked?: boolean } {
+    const r = rec(raw);
+    const session = shortStr(r?.session, ID_MAX);
+    if (!r || !session) throw new InvalidRequest('esperado {session, event?}');
+    return {};
   }
 
   /**
@@ -325,7 +344,7 @@ export class MessageRegistry {
     const now = this.now();
     for (const x of ackResults(r)) {
       const e = this.messages.get(x.id);
-      if (!e || e.demo || e.codex || e.session !== session) continue;
+      if (!e || e.demo || e.codex || e.cursor || e.session !== session) continue;
       if (e.msg.status !== 'sent' && !(e.msg.status === 'failed' && e.late)) continue;
       if (x.ok) this.finish(e, 'delivered', now);
       else this.fail(e, now, x.error ?? ERR_REFUSED);

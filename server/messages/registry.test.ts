@@ -7,6 +7,7 @@ import { setQuiet } from '../log';
 import { NameStore } from '../model/names';
 import { Office } from '../model/office';
 import {
+  ERR_CURSOR_UNAVAILABLE,
   ERR_GONE,
   ERR_NOT_CONFIRMED,
   ERR_NOT_FETCHED,
@@ -312,5 +313,39 @@ describe('MessageRegistry: demo', () => {
     office.setDemo(false);
     registry.tick();
     expect(registry.get(id)).toMatchObject({ status: 'failed', error: ERR_GONE });
+  });
+});
+
+describe('MessageRegistry: caixa do Cursor', () => {
+  const CURSOR = 'cursor:conv-1';
+  const CONV = 'conv-1';
+
+  function cursorSetup() {
+    const base = setup();
+    base.office.addMain({ id: CURSOR, provider: 'cursor', account: 'cursor', sessionId: CONV, cwd: '/p/loja', role: 'Agente principal (Cursor)', startedAt: 0, status: 'idle' });
+    return base;
+  }
+
+  it('a rodada do hook não marca presença e não entrega mensagem', () => {
+    const { office, registry } = cursorSetup();
+    expect(registry.cursorPoll({ session: CONV, event: 'stop' })).toEqual({});
+    expect(registry.cursorPoll({ session: CONV, event: 'beforeSubmitPrompt' })).toEqual({});
+    expect(registry.canMessage(CURSOR)).toBe(false);
+    expect(registry.reachable().has(CURSOR)).toBe(false);
+    expect(snapAgent(office, CURSOR)?.canMessage).toBeUndefined();
+    expect(registry.send({ agentId: CURSOR, text: 'siga com o teste' })).toEqual({ error: 'unavailable', reason: ERR_CURSOR_UNAVAILABLE });
+  });
+
+  it('sessão desconhecida ou evento sem agente: vazio (não quebra); corpo inválido lança', () => {
+    const { registry } = cursorSetup();
+    expect(registry.cursorPoll({ session: 'nao-existe', event: 'stop' })).toEqual({});
+    for (const bad of [null, {}, { session: '' }, { session: 42 }, []]) expect(() => registry.cursorPoll(bad)).toThrow(/session/);
+  });
+
+  it('subagente do Cursor também não recebe mensagem', () => {
+    const { office, registry } = cursorSetup();
+    office.addSub({ id: `${CONV}:s1`, parentId: CURSOR, sessionId: CONV, role: 'Explore', background: false, startedAt: 0 });
+    expect(registry.send({ agentId: `${CONV}:s1`, text: 'oi' })).toEqual({ error: 'unavailable', reason: expect.stringMatching(/subagentes/) });
+    expect(registry.send({ agentId: CURSOR, text: 'oi' })).toEqual({ error: 'unavailable', reason: ERR_CURSOR_UNAVAILABLE });
   });
 });

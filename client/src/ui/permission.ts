@@ -6,6 +6,9 @@
 // Pedido do Codex (`provider: 'codex'`): o hook dele só espera alguns segundos e o terminal só mostra a aprovação
 // depois que você responder aqui ou o prazo acabar; não há "sempre permitir" nem "interromper", e recusar pede um
 // motivo. O Codex nunca pergunta pelo escritório (sem cartão de pergunta).
+// Pedido do Cursor (`provider: 'cursor'`): o hook dele segura a sessão como o do Claude Code, mas o Cursor não tem
+// `updatedPermissions` — o "sempre permitir" é uma regra LOCAL (destination 'habblaud') que o hook passa a aplicar; e
+// não há "interromper" (o servidor recusaria). Recusar não exige motivo e o Cursor nunca pergunta pelo escritório.
 import { ANSWER_OTHER_MAX, ASK_TOOL, checkAnswers } from '../../../shared/answers';
 import type { AgentInfo, AskQuestion, PermissionAnswer, PermissionDecision, PermissionRequestInfo, PermissionSuggestionInfo } from '../../../shared/types';
 import type { UiContext } from './context';
@@ -24,6 +27,7 @@ const DESTINATIONS: Record<string, string> = {
   localSettings: 'neste projeto, só para você',
   projectSettings: 'neste projeto, para todos (versionado)',
   userSettings: 'em todos os projetos',
+  habblaud: 'no Habblaud (regra local do Cursor)',
 };
 
 /** Onde a regra "sempre permitir" fica guardada, em português. */
@@ -61,6 +65,8 @@ export interface PermissionOptions {
 
 export function permissionOptions(p: Pick<PermissionRequestInfo, 'provider' | 'suggestions'>, agent: Pick<AgentInfo, 'kind' | 'background'>): PermissionOptions {
   if (p.provider === 'codex') return { always: false, interrupt: false, reasonRequired: true, seconds: true, note: CODEX_PERMISSION_NOTE };
+  // Cursor: "sempre permitir" = regra local (vem como sugestão própria); sem "interromper" (o servidor recusaria).
+  if (p.provider === 'cursor') return { always: !!p.suggestions?.length, interrupt: false, reasonRequired: false, seconds: false, note: '' };
   // Subagente em segundo plano: o Claude Code só mostra o diálogo depois que o hook responde.
   const blocking = agent.kind === 'sub' && !!agent.background;
   return {

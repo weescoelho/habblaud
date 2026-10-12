@@ -9,6 +9,7 @@ import {
   hasCodexPermission,
   isCodex,
   looksLikeCodexId,
+  PROVIDER_NAME,
   providerOf,
   showsProviderTag,
 } from './provider';
@@ -21,6 +22,11 @@ describe('ferramenta (Claude Code ou Codex)', () => {
     expect(isCodex({ provider: 'codex' })).toBe(true);
     expect(isCodex({ provider: 'claude' })).toBe(false);
     expect(isCodex(null)).toBe(false);
+  });
+
+  it('Cursor: terceiro provedor no protocolo', () => {
+    expect(PROVIDER_NAME.cursor).toBe('Cursor');
+    expect(providerOf({ provider: 'cursor' })).toBe('cursor');
   });
 
   it('id com cara de pasta do Codex (só quando a conta já não está no snapshot)', () => {

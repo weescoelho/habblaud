@@ -22,6 +22,8 @@ setQuiet(true);
 
 const MAIN = 'acc:1';
 const SESSION = 'sess-1';
+const CURSOR = 'acc:cursor';
+const CURSOR_SESSION = 'sess-cursor';
 
 interface MessageServer {
   base: string;
@@ -138,6 +140,7 @@ describe('trava das rotas', () => {
     ['GET', '/api/messages/x'],
     ['POST', '/api/mod/inbox'],
     ['POST', '/api/mod/inbox/ack'],
+    ['POST', '/api/cursor/inbox'],
   ];
 
   it('desligado: 403 em todas as rotas; health e snapshot dizem messages: false; /api/mod/summary continua no ar', async () => {
@@ -237,6 +240,22 @@ describe('rotas', () => {
     expect(done.updatedAt).toBeGreaterThanOrEqual(done.createdAt);
     const agent = (await snapshot(srv)).agents.find((a) => a.id === MAIN)!;
     expect(agent.recent.at(-1)).toMatchObject({ icon: '✉️', text: 'Mensagem pelo Habblaud', detail: 'Agora roda os testes de novo e me diga o que falhou' });
+  });
+
+  it('caixa do Cursor: o inbox não entrega e a página não manda mensagem', async () => {
+    srv = await serveMessages();
+    srv.office.addMain({ id: CURSOR, provider: 'cursor', account: 'cursor', sessionId: CURSOR_SESSION, cwd: '/p/ide', role: 'Cursor', startedAt: Date.now(), status: 'idle' });
+
+    expect((await post(srv, '/api/cursor/inbox', { session: 'nao-existe' })).json).toEqual({});
+    expect((await post(srv, '/api/cursor/inbox', {})).status).toBe(400);
+    expect((await post(srv, '/api/cursor/inbox', { session: 'x'.repeat(500) })).status).toBe(400);
+
+    expect((await post(srv, '/api/cursor/inbox', { session: CURSOR_SESSION, event: 'stop' })).json).toEqual({});
+    expect((await snapshot(srv)).agents.find((a) => a.id === CURSOR)?.canMessage).toBeUndefined();
+
+    const denied = await post(srv, '/api/messages', { agentId: CURSOR, text: 'oi' });
+    expect(denied.status).toBe(409);
+    expect(denied.json).toMatchObject({ error: expect.stringMatching(/não recebe mensagens/) });
   });
 
   it('a sessão some (sem rodadas): canMessage volta a falso e a mensagem na fila falha no prazo', async () => {

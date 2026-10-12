@@ -1,6 +1,6 @@
 // Gaveta de detalhes (direita): agente ou sala selecionados. Agente do Codex: selo "Codex", textos dele (onde
 // responder, o terminal, a aprovação no lugar do modo de permissão, sem custo) e a dica dos hooks do Codex.
-import type { Activity, AgentInfo, FeedItem, RoomInfo, ShellJob, TaskItem } from '../../../shared/types';
+import type { Activity, AgentInfo, AskQuestion, FeedItem, RoomInfo, ShellJob, TaskItem } from '../../../shared/types';
 import { roomTheme } from '../art';
 import { createAvatarPlaceholder, updateAvatar } from './avatar';
 import { CharacterEditor } from './character-editor';
@@ -22,6 +22,7 @@ import {
   shortPath,
 } from './format';
 import { ICONS } from './icons';
+import { waitingItems, type WaitingItem } from './inbox-model';
 import {
   accountsOf,
   activityFallback,
@@ -38,7 +39,7 @@ import {
   taskProgress,
   visibleShells,
 } from './model';
-import { isLocalHostname, PermissionCard } from './permission';
+import { focusPermission, isLocalHostname, PermissionCard } from './permission';
 import { canRenameRoom } from './roomrename';
 import { accountChipLabel, accountProvider, CODEX_LIVE_HINT, codexApprovalLabel, providerOf } from './provider';
 import { createAgentRow, updateAgentRow } from './rows';
@@ -178,6 +179,177 @@ function updateShellItem(li: HTMLElement, j: ShellJob, now: number): void {
 }
 
 
+// ---------------------------------------------------------------- fila "Precisa de você"
+
+/** Rótulo e ícone de cada motivo da fila (permissão, pergunta ou falha). */
+const INBOX_KIND: Record<WaitingItem['kind'], { label: string; icon: string }> = {
+  permission: { label: 'Permissão', icon: ICONS.lock },
+  ask: { label: 'Pergunta', icon: ICONS.help },
+  error: { label: 'Falha', icon: ICONS.hand },
+};
+
+/** Perguntas do AskUserQuestion com as opções, para a fila (mesmas classes da gaveta e do cartão). */
+function askNodes(qs: readonly AskQuestion[]): Node[] {
+  return qs.map((q) =>
+    h(
+      'div',
+      { class: 'ui-ask__q' },
+      q.header ? h('span', { class: 'ui-ask__tag', text: q.header }) : null,
+      h('p', { class: 'ui-ask__question', text: q.question }),
+      q.multiSelect ? h('p', { class: 'ui-ask__hint', text: 'Pode escolher mais de uma' }) : null,
+      h(
+        'ol',
+        { class: 'ui-ask__opts' },
+        ...q.options.map((o) => h('li', {}, h('strong', { text: o.label }), o.description ? h('span', { class: 'ui-ask__desc', text: o.description }) : null)),
+      ),
+    ),
+  );
+}
+
+/** Partes de uma linha da fila, guardadas por elemento (como nos shells). */
+interface InboxRefs {
+  kind: HTMLElement;
+  kindIcon: HTMLElement;
+  kindLabel: HTMLElement;
+  who: HTMLButtonElement;
+  time: HTMLElement;
+  reason: HTMLElement;
+  ask: HTMLElement;
+  askKey: string;
+  approve: HTMLButtonElement;
+  deny: HTMLButtonElement;
+  answer: HTMLButtonElement;
+  hint: HTMLElement;
+  status: HTMLElement;
+  /** Agente do item atual (para focar) e pedido respondível (para decidir). */
+  agentId: string;
+  permissionId: string;
+  busy: boolean;
+}
+
+const inboxRefs = new WeakMap<HTMLElement, InboxRefs>();
+
+/** Ir até o agente no escritório (SC-16): com pedido, o cartão de resposta abre e recebe o foco. */
+function focusInboxAgent(ctx: UiContext, agentId: string): void {
+  if (agentId) focusPermission(ctx, agentId);
+}
+
+function createInboxItem(ctx: UiContext): HTMLElement {
+  const kindIcon = h('span', { class: 'ui-inbox__kind-icon', attrs: { 'aria-hidden': 'true' } });
+  const kindLabel = h('span', { class: 'ui-inbox__kind-label' });
+  const kind = h('span', { class: 'ui-inbox__kind' }, kindIcon, kindLabel);
+  const who = h('button', { class: 'ui-inbox__who', type: 'button' });
+  const time = h('time', { class: 'ui-inbox__time' });
+  const reason = h('p', { class: 'ui-inbox__reason' });
+  const ask = h('div', { class: 'ui-ask', hidden: true });
+  const approve = h('button', { class: 'ui-btn ui-btn--sm ui-perm__btn--allow', type: 'button', text: '✓ Aprovar' });
+  const deny = h('button', { class: 'ui-btn ui-btn--sm ui-perm__btn--deny', type: 'button', text: '✕ Recusar' });
+  const answer = h('button', { class: 'ui-btn ui-btn--sm ui-perm__btn--allow', type: 'button', text: 'Responder' });
+  const hint = h('span', { class: 'ui-muted ui-small ui-inbox__hint' });
+  const status = h('span', { class: 'ui-inbox__status', role: 'status', attrs: { 'aria-live': 'polite' } });
+  const actions = h('div', { class: 'ui-inbox__actions' }, approve, deny, answer, hint, status);
+  const li = h('li', { class: 'ui-inbox__item' }, h('div', { class: 'ui-inbox__head' }, kind, who, time), reason, ask, actions);
+  const refs: InboxRefs = {
+    kind,
+    kindIcon,
+    kindLabel,
+    who,
+    time,
+    reason,
+    ask,
+    askKey: '',
+    approve,
+    deny,
+    answer,
+    hint,
+    status,
+    agentId: '',
+    permissionId: '',
+    busy: false,
+  };
+  inboxRefs.set(li, refs);
+
+  // Decisão pela fila (SC-11): o item sai quando o snapshot deixa de ter o agente em espera (SC-12).
+  const send = (behavior: 'allow' | 'deny'): void => {
+    const id = refs.permissionId;
+    if (!id || refs.busy) return;
+    refs.busy = true;
+    status.classList.remove('is-error');
+    setText(status, 'Enviando…');
+    ctx.invalidate();
+    void ctx.store
+      .decidePermission(id, { behavior })
+      .then((error) => {
+        if (refs.permissionId !== id) return;
+        refs.busy = false;
+        if (error) {
+          status.classList.add('is-error');
+          setText(status, error);
+        } else {
+          setText(status, behavior === 'allow' ? 'Aprovado.' : 'Recusado.');
+          ctx.announce(`${behavior === 'allow' ? 'Aprovado' : 'Recusado'}: ${ctx.agent(refs.agentId)?.name ?? 'agente'}.`);
+        }
+        ctx.invalidate();
+      })
+      .catch(() => {
+        refs.busy = false;
+        status.classList.add('is-error');
+        setText(status, 'Não foi possível falar com o Habblaud. Responda no terminal.');
+        ctx.invalidate();
+      });
+  };
+  approve.addEventListener('click', () => send('allow'));
+  deny.addEventListener('click', () => send('deny'));
+  who.addEventListener('click', () => focusInboxAgent(ctx, refs.agentId));
+  answer.addEventListener('click', () => focusInboxAgent(ctx, refs.agentId));
+  return li;
+}
+
+function updateInboxItem(li: HTMLElement, it: WaitingItem, ctx: UiContext): void {
+  const r = inboxRefs.get(li)!;
+  r.agentId = it.agentId;
+  r.permissionId = it.permissionId ?? '';
+  const kind = INBOX_KIND[it.kind];
+  r.kindIcon.innerHTML = kind.icon;
+  setText(r.kindLabel, kind.label);
+  setVariant(r.kind, 'ui-inbox__kind--', it.kind);
+  const agent = ctx.agent(it.agentId);
+  const room = ctx.store.room(it.roomId);
+  setText(r.who, `${agent?.name ?? 'Agente'} · ${room?.name ?? it.roomId}`);
+  setTitle(r.who, `Ir até ${agent?.name ?? 'o agente'} no escritório`);
+  setText(r.reason, it.reason);
+  const now = ctx.now();
+  setText(r.time, relativeTime(it.since, now));
+  setAttr(r.time, 'datetime', new Date(it.since).toISOString());
+  setTitle(r.time, `Desde ${formatClock(it.since)}`);
+
+  // Perguntas do AskUserQuestion: a fila mostra a pergunta e as respectivas opções (SC-13).
+  const qs = it.questions ?? [];
+  setHidden(r.ask, qs.length === 0);
+  const key = qs.length ? `${it.agentId}|${qs.length}|${qs[0]!.question}` : '';
+  if (key !== r.askKey) {
+    r.askKey = key;
+    r.ask.replaceChildren(...askNodes(qs));
+  }
+
+  const local = ctx.store.mock || isLocalHostname(location.hostname);
+  const channel = !!ctx.store.snapshot?.meta.messages;
+  const canDecide = it.kind === 'permission' && !!it.permissionId;
+  // Responder ao ask pela fila só com o canal ativo (SC-14); senão, o CTA leva à sessão (SC-16).
+  const canAnswer = it.kind === 'ask' && !!it.permissionId && channel;
+  setHidden(r.approve, !canDecide);
+  setHidden(r.deny, !canDecide);
+  setHidden(r.answer, !canAnswer);
+  for (const b of [r.approve, r.deny, r.answer]) b.disabled = r.busy || !local;
+  setTitle(r.approve, local ? 'Aprovar agora, pela fila' : 'Abra o Habblaud por localhost para responder por aqui');
+  setTitle(r.deny, local ? 'Recusar, pela fila' : 'Abra o Habblaud por localhost para responder por aqui');
+  setTitle(r.answer, 'Responder no cartão do agente');
+  // Sem como responder por aqui: diz onde resolver (o "quem" foca o agente; SC-16).
+  const hint = it.kind === 'error' ? 'Abra o agente para ver o que aconteceu.' : it.kind === 'ask' && !canAnswer ? 'Responda no terminal do agente.' : !local && (canDecide || canAnswer) ? 'Abra o Habblaud por localhost para responder por aqui.' : '';
+  setHidden(r.hint, !hint);
+  setText(r.hint, hint);
+}
+
 // ---------------------------------------------------------------- visão do agente
 
 class AgentView {
@@ -218,6 +390,10 @@ class AgentView {
   private alertAnswerHint: HTMLElement;
   /** Pedido de permissão (ou pergunta) para responder por aqui (substitui o alerta genérico enquanto existe). */
   private perm: PermissionCard;
+  /** Fila "Precisa de você": permissão, pergunta ou falha esperando o usuário (todos os agentes). */
+  private inboxSec: ReturnType<typeof section>;
+  private inboxEmpty: HTMLElement;
+  private inbox: KeyedList<WaitingItem>;
   private shellBox: HTMLElement;
   private shellText: HTMLElement;
   private shellMood: HTMLElement;
@@ -342,6 +518,12 @@ class AgentView {
     this.social = new SocialSection(ctx);
     this.perm = new PermissionCard(ctx);
 
+    // Fila "Precisa de você": o que espera o usuário agora, com decisão e resposta pela própria gaveta.
+    const inboxList = h('ul', { class: 'ui-inbox' });
+    this.inboxEmpty = h('p', { class: 'ui-muted ui-small', text: 'Ninguém esperando você agora.' });
+    this.inboxSec = section('Precisa de você', inboxList, this.inboxEmpty);
+    this.inbox = new KeyedList<WaitingItem>(inboxList, { key: (it) => it.agentId, create: () => createInboxItem(ctx), update: (li, it) => updateInboxItem(li, it, ctx) });
+
     this.tasksBar = createProgress('Progresso das tarefas');
     const tasksList = h('ul', { class: 'ui-tasks' });
     this.tasksSec = section('Tarefas', this.tasksBar, tasksList);
@@ -394,6 +576,7 @@ class AgentView {
       this.termBtn,
       this.alert,
       this.perm.el,
+      this.inboxSec.el,
       this.shellBox,
       this.shellsSec.el,
       nowSec.el,
@@ -520,6 +703,12 @@ class AgentView {
       !codex && !!asking?.questions?.length && !this.perm.visible && !this.ctx.store.mock && !!this.ctx.store.snapshot?.meta.terminal && isLocalHostname(location.hostname);
     setHidden(this.alertAnswerHint, !answerable);
 
+    // Fila "Precisa de você": tudo o que espera o usuário (permissão/ask/falha), do mais antigo ao mais recente.
+    const queue = waitingItems(this.ctx.store.snapshot);
+    setHidden(this.inboxSec.el, queue.length === 0);
+    setText(this.inboxSec.extra, queue.length ? String(queue.length) : '');
+    this.inbox.sync(queue);
+
     // Esperando o shell.
     setHidden(this.shellBox, !wait);
     if (wait) {
@@ -603,24 +792,7 @@ class AgentView {
     const key = qs.length ? `${act!.id}|${qs.length}` : '';
     if (key === this.alertQuestionsKey) return;
     this.alertQuestionsKey = key;
-    this.alertQuestions.replaceChildren(
-      ...qs.map((q) =>
-        h(
-          'div',
-          { class: 'ui-ask__q' },
-          q.header ? h('span', { class: 'ui-ask__tag', text: q.header }) : null,
-          h('p', { class: 'ui-ask__question', text: q.question }),
-          q.multiSelect ? h('p', { class: 'ui-ask__hint', text: 'Pode escolher mais de uma' }) : null,
-          h(
-            'ol',
-            { class: 'ui-ask__opts' },
-            ...q.options.map((o) =>
-              h('li', {}, h('strong', { text: o.label }), o.description ? h('span', { class: 'ui-ask__desc', text: o.description }) : null),
-            ),
-          ),
-        ),
-      ),
-    );
+    this.alertQuestions.replaceChildren(...askNodes(qs));
   }
 
   private renderTerminalButton(live: boolean, provider = providerOf(this.last)): void {

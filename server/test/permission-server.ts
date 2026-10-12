@@ -2,7 +2,9 @@
 // /api/permissions) numa porta livre do 127.0.0.1, com um agente principal na sessão "sess-1".
 // Usado pelos testes das rotas e do hook (mod/habblaud-permissoes/hooks/permission-hook.mjs rodado como processo).
 // Com `codex`, também um agente principal do Codex (conta ".codex", thread CODEX_THREAD) e a fonte do Codex ao vivo
-// (`codexLive`, um falso) para o hook do Codex (mod/habblaud-codex/hook.mjs).
+// (`codexLive`, um falso) para o hook do Codex (mod/habblaud-codex/hook.mjs); com `cursor`, um agente principal do
+// Cursor (conta "cursor", conversa CURSOR_CONV) e a fonte do Cursor ao vivo (`cursorLive`, um falso) para o hook do
+// Cursor (mod/habblaud-cursor/hook.mjs).
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { AccountsService } from '../accounts/service';
@@ -14,6 +16,7 @@ import { Office } from '../model/office';
 import { createPermissionRoutes } from '../permissions/http';
 import { PermissionRegistry, type RegistryOptions } from '../permissions/registry';
 import type { CodexLive } from '../sources/codex/live';
+import type { CursorLive } from '../sources/cursor/live';
 import { tempDir } from './fixtures';
 
 export const MAIN = 'acc:1';
@@ -21,6 +24,9 @@ export const SESSION = 'sess-1';
 /** Thread (sintético) do agente do Codex do servidor de teste. */
 export const CODEX_THREAD = '0199b0c0-1234-7abc-8def-0123456789ab';
 export const CODEX_MAIN = `.codex:${CODEX_THREAD}`;
+/** Conversa (sintética) do agente do Cursor do servidor de teste. */
+export const CURSOR_CONV = '0199b0c0-5678-9def-0123-456789abcdef';
+export const CURSOR_MAIN = `cursor:${CURSOR_CONV}`;
 
 export interface PermissionServer {
   base: string;
@@ -33,7 +39,7 @@ export interface PermissionServer {
 }
 
 export async function servePermissions(
-  opts: { enabled?: boolean; viewers?: number; demo?: boolean; registry?: Partial<RegistryOptions>; codex?: boolean; codexLive?: CodexLive } = {},
+  opts: { enabled?: boolean; viewers?: number; demo?: boolean; registry?: Partial<RegistryOptions>; codex?: boolean; codexLive?: CodexLive; cursor?: boolean; cursorLive?: CursorLive } = {},
 ): Promise<PermissionServer> {
   const tmp = tempDir();
   const enabled = opts.enabled ?? true;
@@ -73,6 +79,7 @@ export async function servePermissions(
     terminal: enabled,
     permissions: registry ? createPermissionRoutes(registry) : undefined,
     codexLive: opts.codexLive,
+    cursorLive: opts.cursorLive,
   });
   const guard = createRequestGuard({ allowedHosts: new Set(['habblaud.lan']) });
   const server = http.createServer((req, res) => {
@@ -84,6 +91,9 @@ export async function servePermissions(
   office.addMain({ id: MAIN, account: 'acc', sessionId: SESSION, cwd: '/p/loja', role: 'Agente principal', startedAt: Date.now(), status: 'working' });
   if (opts.codex) {
     office.addMain({ id: CODEX_MAIN, provider: 'codex', account: '.codex', sessionId: CODEX_THREAD, cwd: '/p/loja', role: 'Agente principal', startedAt: Date.now(), status: 'working' });
+  }
+  if (opts.cursor) {
+    office.addMain({ id: CURSOR_MAIN, provider: 'cursor', account: 'cursor', sessionId: CURSOR_CONV, cwd: '/p/loja', role: 'Agente principal (Cursor)', startedAt: Date.now(), status: 'working' });
   }
   if (opts.demo) office.setDemo(true);
   return {

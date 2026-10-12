@@ -218,10 +218,16 @@ const ALIAS_TOOLS: Record<Provider, { invokes: RegExp; dir: RegExp }> = {
     invokes: /(?:^|[\s;&|(])(?:[\w.~/-]*\/)?codex(?=$|[\s;&|)])/,
     dir: /\bCODEX_HOME=(?:"([^"]*)"|'([^']*)'|([^\s;&|]+))/,
   },
+  // O Cursor não expõe alias de shell para a conta (única, descoberta pelos hooks); as duas regex nunca casam
+  // nada, só mantêm o mapa exaustivo completo.
+  cursor: {
+    invokes: /(?!)/,
+    dir: /(?!)/,
+  },
 };
 
 /**
- * Extrai os aliases de shell que invocam a ferramenta (`claude` ou `codex`), com a pasta da conta (CLAUDE_CONFIG_DIR
+ * Extrai os aliases de shell que invocam a ferramenta (`claude`, `codex` ou `cursor`), com a pasta da conta (CLAUDE_CONFIG_DIR
  * ou CODEX_HOME). Considera SOMENTE linhas `alias NOME='...'` (ou com aspas duplas); qualquer outra linha é ignorada.
  */
 export function parseToolAliases(text: string, home: string, tool: Provider): ClaudeAlias[] {
