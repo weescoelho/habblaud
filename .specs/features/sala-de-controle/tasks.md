@@ -404,10 +404,10 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] Renderiza os cards e abre o terminal no clique (SC-17, SC-18)
-- [ ] `waiting` gera badge/notificação reusando `notify.ts` (SC-19); rola preservando `waiting` (SC-20)
-- [ ] Gate check passes: `npm run typecheck && npm test && npm run build`
-- [ ] Test count: sem remoção; lógica pura coberta no T11
+- [x] Renderiza os cards e abre o terminal no clique (SC-17, SC-18)
+- [x] `waiting` gera badge/notificação reusando `notify.ts` (SC-19); rola preservando `waiting` (SC-20)
+- [x] Gate check passes: `npm run typecheck && npm test && npm run build`
+- [x] Test count: sem remoção; lógica pura coberta no T11
 
 **Tests**: none
 **Gate**: build
