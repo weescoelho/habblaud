@@ -22,6 +22,8 @@ setQuiet(true);
 
 const MAIN = 'acc:1';
 const SESSION = 'sess-1';
+const CURSOR = 'acc:cursor';
+const CURSOR_SESSION = 'sess-cursor';
 
 interface MessageServer {
   base: string;
@@ -138,6 +140,7 @@ describe('trava das rotas', () => {
     ['GET', '/api/messages/x'],
     ['POST', '/api/mod/inbox'],
     ['POST', '/api/mod/inbox/ack'],
+    ['POST', '/api/cursor/inbox'],
   ];
 
   it('desligado: 403 em todas as rotas; health e snapshot dizem messages: false; /api/mod/summary continua no ar', async () => {
@@ -237,6 +240,65 @@ describe('rotas', () => {
     expect(done.updatedAt).toBeGreaterThanOrEqual(done.createdAt);
     const agent = (await snapshot(srv)).agents.find((a) => a.id === MAIN)!;
     expect(agent.recent.at(-1)).toMatchObject({ icon: '✉️', text: 'Mensagem pelo Habblaud', detail: 'Agora roda os testes de novo e me diga o que falhou' });
+  });
+
+  it('caixa do Cursor: o hook marca a presença, a mensagem fica na fila e o `stop` entrega como followup_message (delivered)', async () => {
+    srv = await serveMessages();
+    srv.office.addMain({ id: CURSOR, provider: 'cursor', account: 'cursor', sessionId: CURSOR_SESSION, cwd: '/p/ide', role: 'Cursor', startedAt: Date.now(), status: 'idle' });
+
+    // Sessão desconhecida: vazio (nunca 404); sessão inválida: 400.
+    expect((await post(srv, '/api/cursor/inbox', { session: 'nao-existe' })).json).toEqual({});
+    expect((await post(srv, '/api/cursor/inbox', {})).status).toBe(400);
+    expect((await post(srv, '/api/cursor/inbox', { session: 'x'.repeat(500) })).status).toBe(400);
+
+    // Antes do hook não há canal: a página não consegue mandar (SC-30).
+    const before = await post(srv, '/api/messages', { agentId: CURSOR, text: 'oi' });
+    expect(before.status).toBe(409);
+    expect(before.json).toMatchObject({ error: expect.stringMatching(/cursor:install/) });
+
+    // O hook marca a presença (qualquer evento) e o canal abre (SC-27).
+    expect((await post(srv, '/api/cursor/inbox', { session: CURSOR_SESSION, event: 'beforeSubmitPrompt' })).json).toEqual({});
+    expect((await snapshot(srv)).agents.find((a) => a.id === CURSOR)?.canMessage).toBe(true);
+
+    const text = 'Agora roda os testes de novo\ne me diga o que falhou ';
+    const created = await post(srv, '/api/messages', { agentId: CURSOR, text });
+    expect(created.status).toBe(201);
+    const msg = created.json as OutboxMessage;
+    expect(msg).toMatchObject({ agentId: CURSOR, status: 'queued' });
+    expect(created.text).not.toContain('testes');
+
+    // Eventos que não são `stop` só marcam a presença: nada é entregue.
+    expect((await post(srv, '/api/cursor/inbox', { session: CURSOR_SESSION, event: 'afterFileEdit' })).json).toEqual({});
+    expect(((await request(srv.base, `/api/messages/${encodeURIComponent(msg.id)}`)).json as OutboxMessage).status).toBe('queued');
+
+    // Fim do turno: sai como followup_message e a entrega é confirmada (SC-27, SC-28).
+    const stop = await post(srv, '/api/cursor/inbox', { session: CURSOR_SESSION, event: 'stop' });
+    expect(stop.json).toEqual({ followup_message: text });
+    expect((await request(srv.base, `/api/messages/${encodeURIComponent(msg.id)}`)).json as OutboxMessage).toMatchObject({ id: msg.id, status: 'delivered' });
+
+    // Idempotente por id: um novo `stop` não repete a mensagem (SC-31).
+    expect((await post(srv, '/api/cursor/inbox', { session: CURSOR_SESSION, event: 'stop' })).json).toEqual({});
+  });
+
+  it('trava de auto-followups do Cursor: 5 entregas sem resposta e o `stop` devolve locked; o prompt do usuário libera (SC-29)', async () => {
+    srv = await serveMessages();
+    srv.office.addMain({ id: CURSOR, provider: 'cursor', account: 'cursor', sessionId: CURSOR_SESSION, cwd: '/p/ide', role: 'Cursor', startedAt: Date.now(), status: 'idle' });
+    await post(srv, '/api/cursor/inbox', { session: CURSOR_SESSION, event: 'beforeSubmitPrompt' });
+
+    for (let i = 0; i < 5; i++) {
+      const m = (await post(srv, '/api/messages', { agentId: CURSOR, text: `m${i}` })).json as OutboxMessage;
+      expect((await post(srv, '/api/cursor/inbox', { session: CURSOR_SESSION, event: 'stop' })).json).toEqual({ followup_message: `m${i}` });
+      expect(((await request(srv.base, `/api/messages/${encodeURIComponent(m.id)}`)).json as OutboxMessage).status).toBe('delivered');
+    }
+    // A 6ª fica na fila: a trava exige ação explícita do usuário.
+    const held = (await post(srv, '/api/messages', { agentId: CURSOR, text: 'm5' })).json as OutboxMessage;
+    expect((await post(srv, '/api/cursor/inbox', { session: CURSOR_SESSION, event: 'stop' })).json).toEqual({ locked: true });
+    expect(((await request(srv.base, `/api/messages/${encodeURIComponent(held.id)}`)).json as OutboxMessage).status).toBe('queued');
+
+    // O usuário respondeu na IDE: a trava zera e a mensagem da fila sai.
+    expect((await post(srv, '/api/cursor/inbox', { session: CURSOR_SESSION, event: 'beforeSubmitPrompt' })).json).toEqual({});
+    expect((await post(srv, '/api/cursor/inbox', { session: CURSOR_SESSION, event: 'stop' })).json).toEqual({ followup_message: 'm5' });
+    expect(((await request(srv.base, `/api/messages/${encodeURIComponent(held.id)}`)).json as OutboxMessage).status).toBe('delivered');
   });
 
   it('a sessão some (sem rodadas): canMessage volta a falso e a mensagem na fila falha no prazo', async () => {

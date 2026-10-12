@@ -124,6 +124,7 @@ function isMessagesPath(path: string): boolean {
     path.startsWith('/api/messages/') ||
     path === '/api/mod/inbox' ||
     path === '/api/mod/inbox/ack' ||
+    path === '/api/cursor/inbox' ||
     path === '/api/codex/bridge/poll' ||
     path === '/api/codex/bridge/ack'
   );

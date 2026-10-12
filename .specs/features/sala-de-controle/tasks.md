@@ -705,10 +705,10 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] A rota entrega a mensagem da sessão e confirma a entrega (SC-27, SC-28)
-- [ ] Corpo inválido → 400; sessão desconhecida → vazio (não quebra)
-- [ ] Gate check passes: `npm test`
-- [ ] Test count: `server/messages/http.test.ts` verde com os novos casos (sem remoção de teste)
+- [x] A rota entrega a mensagem da sessão e confirma a entrega (SC-27, SC-28)
+- [x] Corpo inválido → 400; sessão desconhecida → vazio (não quebra)
+- [x] Gate check passes: `npm test`
+- [x] Test count: `server/messages/http.test.ts` verde com os novos casos (sem remoção de teste)
 
 **Tests**: integration
 **Gate**: full
