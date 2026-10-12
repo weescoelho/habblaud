@@ -379,10 +379,10 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] Um card por agente ao vivo com provedor/status/atividade/diff (SC-17)
-- [ ] Ordenação mantém `waiting` no topo mesmo com grid cheio (SC-20)
-- [ ] Gate check passes: `npx vitest run client/src/ui/mosaic-model.test.ts`
-- [ ] Test count: casos de card e ordenação verde (sem remoção de teste)
+- [x] Um card por agente ao vivo com provedor/status/atividade/diff (SC-17)
+- [x] Ordenação mantém `waiting` no topo mesmo com grid cheio (SC-20)
+- [x] Gate check passes: `npx vitest run client/src/ui/mosaic-model.test.ts`
+- [x] Test count: casos de card e ordenação verde (sem remoção de teste)
 
 **Tests**: unit
 **Gate**: quick
