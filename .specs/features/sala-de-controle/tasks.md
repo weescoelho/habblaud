@@ -927,10 +927,10 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] A tarefa aparece na sala do projeto de origem com rótulo (SC-40)
-- [ ] Remover o worktree não encerra a sala do projeto
-- [ ] Gate check passes: `npx vitest run server/sources/cursor/tasks.test.ts`
-- [ ] Test count: caso sala/rótulo verde (sem remoção de teste)
+- [x] A tarefa aparece na sala do projeto de origem com rótulo (SC-40)
+- [x] Remover o worktree não encerra a sala do projeto
+- [x] Gate check passes: `npx vitest run server/sources/cursor/tasks.test.ts`
+- [x] Test count: caso sala/rótulo verde (sem remoção de teste)
 
 **Tests**: unit
 **Gate**: quick
