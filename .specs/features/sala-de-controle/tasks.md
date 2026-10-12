@@ -353,11 +353,11 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] Itens saem da fila ao decidir a permissão (SC-11, SC-12)
-- [ ] `ask` mostra pergunta/opções; responder pela fila quando há canal (SC-13, SC-14)
-- [ ] Badge oculto com fila vazia (SC-15); sem deep-link, foca o agente no escritório (SC-16)
-- [ ] Gate check passes: `npm run typecheck && npm test && npm run build`
-- [ ] Test count: sem remoção; lógica pura coberta no T9
+- [x] Itens saem da fila ao decidir a permissão (SC-11, SC-12)
+- [x] `ask` mostra pergunta/opções; responder pela fila quando há canal (SC-13, SC-14)
+- [x] Badge oculto com fila vazia (SC-15); sem deep-link, foca o agente no escritório (SC-16)
+- [x] Gate check passes: `npm run typecheck && npm test && npm run build`
+- [x] Test count: sem remoção; lógica pura coberta no T9
 
 **Tests**: none
 **Gate**: build
