@@ -879,9 +879,9 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] Lista e executa (dispara o prompt na sessão) (SC-32, SC-33)
-- [ ] Gate check passes: `npm run typecheck && npm run build`
-- [ ] Test count: sem remoção; lógica pura coberta no T30
+- [x] Lista e executa (dispara o prompt na sessão) (SC-32, SC-33)
+- [x] Gate check passes: `npm run typecheck && npm run build`
+- [x] Test count: sem remoção; lógica pura coberta no T30
 
 **Tests**: none
 **Gate**: build
