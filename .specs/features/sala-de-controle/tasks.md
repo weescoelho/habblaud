@@ -478,10 +478,10 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] Um trecho de stream-json vira linhas `{role, message.content[]}` compatíveis com o parser do Cursor
-- [ ] Formato desconhecido não lança (degrada para entrada mínima)
-- [ ] Gate check passes: `npx vitest run server/sources/cursor/stream.test.ts`
-- [ ] Test count: casos felizes + formato divergente verde (sem remoção de teste)
+- [x] Um trecho de stream-json vira linhas `{role, message.content[]}` compatíveis com o parser do Cursor
+- [x] Formato desconhecido não lança (degrada para entrada mínima)
+- [x] Gate check passes: `npx vitest run server/sources/cursor/stream.test.ts`
+- [x] Test count: casos felizes + formato divergente verde (sem remoção de teste)
 
 **Tests**: unit
 **Gate**: quick
