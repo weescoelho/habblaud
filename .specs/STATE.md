@@ -21,10 +21,10 @@
 ## Handoff
 
 - **Feature**: `sala-de-controle` (`.specs/features/sala-de-controle/`) — observabilidade em tempo real, triagem, controle de agentes e salas por projeto (8 histórias `SC-01..SC-40`). Pré-requisitos corrigidos: `CSH-06` (fio do hook de subagente) e `CSH-22` (terminal do sub).
-- **Phase / Task**: **Execute em andamento — lote B1 (P1+P2, T1–T8) concluído** (`37471f1`..`75f100c`). Usuário aprovou o Execute com 4 lotes de sub-agentes (B1 P1+P2=8, B2 P3+P4=5, B3 P5=9, B4 P6+P7+P8=12). Gate do lote verificado pelo orquestrador: `npm run typecheck && npm test && npm run build` → 108 arquivos / **1409 passed / 2 skipped**, build OK.
-- **Completed** (recente): B1 — `TranscriptHub` (leitura única + fan-out, `server/sources/transcript-hub.ts`, T1/T2), `TerminalStreams` e `CursorSource` assinam o hub (T3/T4), diff do `afterFileEdit` no hook→`Activity`→terminal (T5–T8). Antes: bugfixes `CSH-06`/`CSH-22` e artefatos da `sala-de-controle`.
-- **In-progress** (file:line): nada; próximo é despachar o **lote B2** (P3 triagem T9–T10; P4 mosaico T11–T13).
-- **Next step**: despachar B2 (fases P3+P4) ao worker; ao fim dos 4 lotes, rodar o **Verifier independente** (autor ≠ verificador) e `validate_state.py`.
+- **Phase / Task**: **Execute em andamento — lotes B1 (T1–T8) e B2 (T9–T13) concluídos**. B2 = `1db1fbd`..`6037bc9`. Gate do lote verificado pelo orquestrador: `npm run typecheck && npm test && npm run build` → 110 arquivos / **1426 passed / 2 skipped**, build OK. Próximo: **lote B3 (P5, T14–T22)**. Usuário aprovou o Execute com 4 lotes de sub-agentes (B1 P1+P2=8, B2 P3+P4=5, B3 P5=9, B4 P6+P7+P8=12).
+- **Completed** (recente): B2 — fila "Precisa de você" (`client/src/ui/inbox-model.ts` T9 + seção no `drawer.ts` T10) e mosaico de sessões (`client/src/ui/mosaic-model.ts` T11 + `mosaic.ts` T12 + registro em `index.ts` T13). B1 — `TranscriptHub`/`fs.watch` (T1/T2), `TerminalStreams`/`CursorSource` assinam o hub (T3/T4), diff `afterFileEdit`→`Activity`→terminal (T5–T8). Antes: bugfixes `CSH-06`/`CSH-22` e artefatos da `sala-de-controle`.
+- **In-progress** (file:line): nada; próximo é despachar o **lote B3** (P5 tarefas headless T14–T22).
+- **Next step**: despachar B3 (fase P5) ao worker; depois B4 e, ao fim, o **Verifier independente** (autor ≠ verificador) + `validate_state.py`.
 - **Blockers**: validação **ao vivo** do `stop.followup_message` (máquina do usuário — lacuna C7).
 - **Uncommitted files**: nenhum. Config local da máquina: capturador da POC ainda instalado em `~/.cursor/hooks.json` (17 eventos com 2 comandos) — limpar com `npm run cursor:poc:uninstall` quando quiser.
 - **Branch**: `cursor-poc-v2`. Remotes: `origin` = fork `weescoelho/habblaud`; `upstream` = `marmottajr/habblaud`.
