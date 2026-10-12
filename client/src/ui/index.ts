@@ -10,10 +10,11 @@ import './styles.css';
 
 import type { OfficeStore } from '../net/store';
 import type { Selection, WorldApi } from '../world/api';
+import { isDemoId } from '../../../shared/timeline';
 import type { PanelName, UiComponent, UiContext } from './context';
 import { DayLauncher } from './daystats-launcher';
 import { RoomRenamer } from './roomrename';
-import { h } from './dom';
+import { h, iconButton, setText } from './dom';
 import { Drawer } from './drawer';
 import { FeedPanel } from './feed';
 import { HelpDialog } from './help';
@@ -24,11 +25,12 @@ import { Mosaic } from './mosaic';
 import { hasCodexPermission } from './provider';
 import { Notifier } from './notify';
 import { ConnectionBanner, EmptyState, Splash } from './overlays';
-import { focusPermission, nextPermissionAgent } from './permission';
+import { focusPermission, isLocalHostname, nextPermissionAgent } from './permission';
 import { loadPrefs, safeLocalStorage, savePrefs, worldOptionsFrom, type UiPrefs } from './prefs';
 import { SettingsPopover } from './settings';
 import { Sidebar } from './sidebar';
 import { SoundControl } from './sound';
+import { createTask, emptyTaskForm, TASK_MODE_LABEL, TASK_MODES, type TaskForm, type TaskMode } from './tasks-model';
 import { TERMINAL_UNAVAILABLE_HINT, TerminalPanel } from './terminal';
 import { TimelapsePlayer } from './timelapse';
 import { Toasts } from './toasts';
@@ -164,6 +166,9 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
   help = new HelpDialog();
   const day = new DayLauncher(ctx, (el) => root.append(el));
   topbar.addPanelButton(day.button);
+  // "Nova tarefa" (P5 · SC-21): lança uma tarefa headless no projeto escolhido; a tarefa entra na sala como sessão comum.
+  const tasks = new TaskLauncher(ctx);
+  topbar.addPanelButton(tasks.button);
   // Botão direito numa sala (lista lateral ou escritório): renomear.
   const renamer = new RoomRenamer(ctx);
   ctx.renameRoom = (id, at) => renamer.open(id, at);
@@ -177,7 +182,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
   const scrim = h('div', { class: 'ui-scrim', attrs: { 'aria-hidden': 'true' }, on: { click: () => ctx.togglePanel('sidebar', false) } });
 
   root.classList.add('ui-root');
-  root.append(timelapse.vignette, topbar.el, sidebar.el, scrim, feed.el, drawer.el, terminal.el, mosaic.el, timelapse.el, timelapse.badge, toasts.el, banner.el, update.el, empty.el, tip.el, settings.el, history.el, help.el, renamer.el, live, splash.el);
+  root.append(timelapse.vignette, topbar.el, sidebar.el, scrim, feed.el, drawer.el, terminal.el, mosaic.el, timelapse.el, timelapse.badge, toasts.el, banner.el, update.el, empty.el, tip.el, settings.el, history.el, help.el, tasks.el, renamer.el, live, splash.el);
   area = new FreeArea(world, { root, topbar: topbar.el, sidebar: sidebar.el, drawer: drawer.el, feed: feed.el }, () => ({
     sidebar: panels.sidebar,
     feed: panels.feed,
@@ -186,7 +191,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
   }));
   drawer.onLayoutChange = () => applyLayout();
 
-  const components: UiComponent[] = [topbar, sidebar, drawer, terminal, history, feed, toasts, settings, empty, banner, tip, notifier, splash, timelapse, mosaic, sound, day, updateToaster];
+  const components: UiComponent[] = [topbar, sidebar, drawer, terminal, history, feed, toasts, settings, empty, banner, tip, notifier, splash, timelapse, mosaic, sound, day, tasks, updateToaster];
 
   // ---------------------------------------------------------------- renderização agrupada por quadro
   let rafId = 0;
@@ -323,6 +328,13 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
         else ctx.announce('Nenhum pedido de permissão ou pergunta para responder agora.');
         break;
       }
+      case 'n':
+      case 'N':
+        // Nova tarefa headless (P5 · SC-21): abre o formulário do launcher.
+        e.preventDefault();
+        if (tasks.available()) tasks.toggle();
+        else ctx.announce('As tarefas headless do Cursor não estão disponíveis.');
+        break;
       case 'o':
       case 'O':
         e.preventDefault();
@@ -364,4 +376,140 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi)
   world.setOptions(worldOptionsFrom(prefs));
   applyLayout();
   renderAll();
+}
+
+/** Ícone "Nova tarefa" (o mesmo traço pixel dos outros botões; um "+"). */
+const TASK_ICON =
+  '<svg class="ui-px-icon" width="20" height="20" viewBox="0 0 10 10" shape-rendering="crispEdges" aria-hidden="true" focusable="false">' +
+  '<path fill="currentColor" d="M4 0h2v4h4v2H6v4H4V6H0V4h4z"/></svg>';
+
+/**
+ * "Nova tarefa" (P5 · SC-21): lança uma tarefa headless do Cursor no projeto escolhido. A tarefa passa a aparecer na
+ * sala do projeto como uma sessão comum (observável pelo Office). Só fica disponível com o recurso ligado
+ * (snapshot.meta.tasks) e o acesso local — a mesma trava do terminal.
+ */
+class TaskLauncher implements UiComponent {
+  readonly button: HTMLButtonElement;
+  readonly el: HTMLDialogElement;
+  private readonly project: HTMLSelectElement;
+  private readonly promptInput: HTMLTextAreaElement;
+  private readonly mode: HTMLSelectElement;
+  private readonly model: HTMLInputElement;
+  private readonly isolated: HTMLInputElement;
+  private readonly hint: HTMLParagraphElement;
+  private readonly submit: HTMLButtonElement;
+  private busy = false;
+
+  constructor(private readonly ctx: UiContext) {
+    this.button = iconButton(TASK_ICON, 'Nova tarefa (N)', () => this.toggle());
+
+    this.project = h('select', { class: 'ui-rename__input', attrs: { 'aria-label': 'Projeto de origem' } });
+    this.promptInput = h('textarea', {
+      class: 'ui-rename__input',
+      attrs: { rows: 3, placeholder: 'O que o agente deve fazer?', 'aria-label': 'Descrição da tarefa' },
+    });
+    this.mode = h(
+      'select',
+      { class: 'ui-rename__input', attrs: { 'aria-label': 'Modo' } },
+      ...TASK_MODES.map((m) => h('option', { text: TASK_MODE_LABEL[m], attrs: { value: m } })),
+    );
+    this.mode.value = 'plan';
+    this.model = h('input', { class: 'ui-rename__input', type: 'text', attrs: { placeholder: 'auto', 'aria-label': 'Modelo', spellcheck: 'false' } });
+    this.isolated = h('input', { type: 'checkbox', attrs: { 'aria-label': 'Isolar em worktree' } });
+    this.isolated.checked = true;
+    this.hint = h('p', { class: 'ui-rename__hint' });
+    this.submit = h('button', { class: 'ui-btn ui-btn--primary', type: 'submit', text: 'Criar tarefa' });
+
+    const form = h(
+      'form',
+      {
+        class: 'ui-dialog__body',
+        style: 'grid-template-columns:1fr; gap:10px; align-content:start',
+        on: {
+          submit: (e) => {
+            e.preventDefault();
+            void this.create();
+          },
+        },
+      },
+      h('label', { text: 'Projeto' }),
+      this.project,
+      h('label', { text: 'Descrição' }),
+      this.promptInput,
+      h('label', { text: 'Modo' }),
+      this.mode,
+      h('label', { text: 'Modelo' }),
+      this.model,
+      h('label', {}, this.isolated, h('span', { text: ' Isolar em worktree (branch própria)' })),
+      this.hint,
+      this.submit,
+    );
+    this.el = h(
+      'dialog',
+      { class: 'ui-dialog', style: 'width:min(420px, calc(100vw - 32px))', attrs: { 'aria-label': 'Nova tarefa' } },
+      h('div', { class: 'ui-dialog__head' }, h('h2', { text: 'Nova tarefa' })),
+      form,
+    );
+    this.el.addEventListener('click', (e) => {
+      if (e.target === this.el) this.el.close();
+    });
+  }
+
+  /** O recurso está ligado e acessível por este computador? */
+  available(): boolean {
+    return !!this.ctx.store.snapshot?.meta.tasks && !this.ctx.store.mock && !this.ctx.store.replaying && isLocalHostname(location.hostname);
+  }
+
+  toggle(): void {
+    if (this.el.open) this.el.close();
+    else {
+      this.syncProjects();
+      setText(this.hint, '');
+      this.hint.classList.remove('is-error');
+      this.el.showModal();
+      this.promptInput.focus();
+    }
+  }
+
+  render(): void {
+    this.button.hidden = !this.available();
+    if (this.el.open && !this.available()) this.el.close();
+  }
+
+  /** Projetos reais (sem as salas de demonstração), preservando a escolha. */
+  private syncProjects(): void {
+    const rooms = (this.ctx.store.snapshot?.rooms ?? []).filter((r) => !isDemoId(r.id));
+    const previous = this.project.value;
+    this.project.replaceChildren(...rooms.map((r) => h('option', { text: r.name, attrs: { value: r.id } })));
+    if (rooms.some((r) => r.id === previous)) this.project.value = previous;
+  }
+
+  private async create(): Promise<void> {
+    if (this.busy) return;
+    const sel = this.ctx.selection();
+    const cwd = this.project.value || (sel?.type === 'room' ? sel.id : '');
+    const form: TaskForm = {
+      ...emptyTaskForm(cwd),
+      prompt: this.promptInput.value,
+      mode: this.mode.value as TaskMode,
+      model: this.model.value,
+      isolated: this.isolated.checked,
+    };
+    this.busy = true;
+    this.submit.disabled = true;
+    try {
+      const res = await createTask(form);
+      if ('error' in res) {
+        setText(this.hint, `Não deu: ${res.error}`);
+        this.hint.classList.add('is-error');
+        return;
+      }
+      this.el.close();
+      this.promptInput.value = '';
+      this.ctx.announce(`Tarefa “${res.task.label}” criada na sala do projeto.`);
+    } finally {
+      this.busy = false;
+      this.submit.disabled = false;
+    }
+  }
 }

@@ -651,14 +651,18 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] A ação cria a tarefa e ela surge na sala do projeto (SC-21)
-- [ ] Gate check passes: `npm run typecheck && npm run build`
-- [ ] Test count: sem remoção
+- [x] A ação cria a tarefa e ela surge na sala do projeto (SC-21)
+- [x] Gate check passes: `npm run typecheck && npm run build`
+- [x] Test count: sem remoção
 
 **Tests**: none
 **Gate**: build
 
 **Commit**: `feat(cursor): nova tarefa a partir do launcher`
+
+> **Nota de execução** (lote B3, retomado pelo orquestrador): o worker do B3 concluiu T14–T21 e parou no meio do
+> T22 (erro transitório de provedor). O orquestrador concluiu o T22: `TaskLauncher` em `client/src/ui/index.ts`
+> (botão no topbar + diálogo com projeto/modo/modelo/isolada, atalho `N`), gated por `meta.tasks` + host local.
 
 ---
 
