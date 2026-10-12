@@ -328,10 +328,10 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] Lista motivos (permissão/ask/falha) com agente, motivos e `since` (SC-10, SC-13)
-- [ ] Vazia quando ninguém espera (SC-15)
-- [ ] Gate check passes: `npx vitest run client/src/ui/inbox-model.test.ts`
-- [ ] Test count: casos por tipo + vazio verde (sem remoção de teste)
+- [x] Lista motivos (permissão/ask/falha) com agente, motivos e `since` (SC-10, SC-13)
+- [x] Vazia quando ninguém espera (SC-15)
+- [x] Gate check passes: `npx vitest run client/src/ui/inbox-model.test.ts`
+- [x] Test count: casos por tipo + vazio verde (sem remoção de teste)
 
 **Tests**: unit
 **Gate**: quick
