@@ -12,6 +12,8 @@ import { Office } from '../../model/office';
 import { tempDir } from '../../test/fixtures';
 import { TranscriptHub } from '../transcript-hub';
 import { CursorSource } from './source';
+import type { TaskManagerOptions, TaskSpawner } from './tasks';
+import { WorktreeManager, type GitRunner } from './worktree';
 
 setQuiet(true);
 
@@ -21,7 +23,7 @@ afterEach(() => {
   cleanups = [];
 });
 
-function setup(opts: { hub?: TranscriptHub } = {}) {
+function setup(opts: { hub?: TranscriptHub; tasks?: (ctx: { dir: string; home: string }) => Omit<TaskManagerOptions, 'office'> } = {}) {
   const home = tempDir('habblaud-cursor-');
   cleanups.push(home.cleanup);
   const dir = resolve(join(home.dir, '.cursor'));
@@ -39,7 +41,7 @@ function setup(opts: { hub?: TranscriptHub } = {}) {
     now,
   });
   late.office = office;
-  const source = new CursorSource({ accounts, office, home: home.dir, dir, now, pollMs: 1_000, hub: opts.hub });
+  const source = new CursorSource({ accounts, office, home: home.dir, dir, now, pollMs: 1_000, hub: opts.hub, tasks: opts.tasks?.({ dir, home: home.dir }) });
   cleanups.unshift(() => source.stop());
   const notices: string[] = [];
   return {
@@ -75,6 +77,17 @@ const ev = (name: string, extra: Record<string, unknown> = {}) => ({
   workspace_roots: ['/projetos/demo'],
   ...extra,
 });
+
+/**
+ * Opções de tarefa com `spawn`/`git` FAKES: nenhum processo nem repositório de verdade é tocado. O transcript
+ * normalizado fica em `<cursorDir>/tasks` (apagado com a pasta temporária do teste).
+ */
+function fakeTasks(dir: string, opts: { file?: string } = {}): Omit<TaskManagerOptions, 'office'> {
+  const spawn: TaskSpawner = () => ({ pid: 7, stdout: null, kill: () => true, once: () => {}, on: () => {} });
+  const git: GitRunner = async () => ({ code: 0, stdout: '', stderr: '' });
+  const worktrees = new WorktreeManager({ baseDir: join(dir, 'worktrees'), git });
+  return { spawn, worktrees, dir: join(dir, 'tasks'), bin: '/opt/bin/cursor-agent', env: { PATH: '/usr/bin' }, file: opts.file ?? null };
+}
 
 describe('fonte do Cursor: presença por hooks', () => {
   it('sessionStart cria o agente na sala de workspace_roots[0]; preToolUse trabalha; stop para; sessionEnd fecha', () => {
@@ -497,5 +510,66 @@ describe('fonte do Cursor: pump do transcript (GitHub)', () => {
     appendFileSync(file, `${shellLine('git push origin main')}\n`);
     hub.tick(); // o hub entrega; a fonte reage ao vivo, sem passar pelo poll()
     expect(ctx.agent()?.activity).toMatchObject({ tool: 'GitHub', kind: 'git' });
+  });
+});
+
+describe('fonte do Cursor: tarefas headless (P5)', () => {
+  it('hospeda o ciclo e roteia o terminal da tarefa para o transcript normalizado (SC-21/SC-24)', async () => {
+    const ctx = setup({ tasks: ({ dir }) => fakeTasks(dir) });
+    const info = await ctx.source.createTask({ prompt: 'Crie a tela de login', cwd: '/projetos/alfa' });
+
+    expect(ctx.source.tasks().map((t) => t.id)).toEqual([info.id]);
+    // O terminal da tarefa lê o JSONL normalizado, com um parser NOVO por leitura (SC-24).
+    expect(ctx.source.transcriptPathOf(info.agentId)).toBe(join(ctx.dir, 'tasks', `${info.id}.jsonl`));
+    const p1 = ctx.source.terminalParser(info.agentId);
+    const p2 = ctx.source.terminalParser(info.agentId);
+    expect(p1).toBeDefined();
+    expect(p2).toBeDefined();
+    expect(p1).not.toBe(p2);
+    // A tarefa entra na sala do projeto de origem como um agente Cursor comum.
+    expect(ctx.agent(info.agentId)).toMatchObject({ provider: 'cursor', roomId: '/projetos/alfa', status: 'working' });
+  });
+
+  it('para, retoma e exclui a tarefa pelo host (SC-21/SC-25/SC-23)', async () => {
+    const ctx = setup({ tasks: ({ dir }) => fakeTasks(dir) });
+    const info = await ctx.source.createTask({ prompt: 'x', cwd: '/projetos/alfa' });
+
+    expect(ctx.source.stopTask(info.id)?.status).toBe('stopped');
+    expect((await ctx.source.resumeTask(info.id))?.status).toBe('running');
+    await expect(ctx.source.removeTask(info.id)).resolves.toEqual({ removed: true });
+    expect(ctx.source.tasks()).toEqual([]);
+    expect(ctx.source.transcriptPathOf(info.agentId)).toBeUndefined();
+  });
+
+  it('não roteia terminal de um id de tarefa desconhecido', () => {
+    const ctx = setup({ tasks: ({ dir }) => fakeTasks(dir) });
+    expect(ctx.source.transcriptPathOf('cursor:task:inexistente')).toBeUndefined();
+    expect(ctx.source.terminalParser('cursor:task:inexistente')).toBeUndefined();
+  });
+
+  it('reconcilia a tarefa órfã persistida ao iniciar (SC-25)', () => {
+    let file = '';
+    const ctx = setup({
+      tasks: ({ dir }) => {
+        file = join(dir, 'tasks.json');
+        mkdirSync(dir, { recursive: true });
+        const info = {
+          id: 'task-x',
+          prompt: 'x',
+          mode: 'plan',
+          agentId: 'cursor:task:task-x',
+          roomId: '/projetos/alfa',
+          label: 'x',
+          status: 'running',
+          createdAt: 1,
+        };
+        writeFileSync(file, JSON.stringify({ version: 1, tasks: [{ info, prompt: 'x', mode: 'plan', force: false, cwd: '/projetos/alfa', isolated: false, transcriptPath: join(dir, 'tasks', 'task-x.jsonl') }] }));
+        return fakeTasks(dir, { file });
+      },
+    });
+
+    expect(ctx.source.tasks()[0].status).toBe('running');
+    ctx.source.start(); // boot: sem processo vivo, a órfã vira stopped
+    expect(ctx.source.tasks()[0].status).toBe('stopped');
   });
 });

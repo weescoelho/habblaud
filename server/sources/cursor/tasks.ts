@@ -67,6 +67,16 @@ export type TaskSpawner = (bin: string, args: string[], opts: { cwd: string; env
 /** Resultado da remoção: `dirty` = alterações não commitadas (worktree preservado). */
 export type TaskRemoveResult = { removed: true } | { removed: false; reason: 'dirty' | 'failed' | 'missing' };
 
+/** O ciclo da tarefa que um host (a fonte do Cursor) expõe às rotas `/api/tasks*` (T18/T19). */
+export interface TaskHost {
+  /** As tarefas conhecidas (cópias), da mais antiga para a mais recente. */
+  tasks(): CursorTaskInfo[];
+  createTask(input: TaskInput): Promise<CursorTaskInfo>;
+  stopTask(id: string): CursorTaskInfo | undefined;
+  resumeTask(id: string): Promise<CursorTaskInfo | undefined>;
+  removeTask(id: string): Promise<TaskRemoveResult>;
+}
+
 export interface TaskManagerOptions {
   office: Office;
   /** Gerencia o isolamento; ausente = um novo WorktreeManager com o padrão. */

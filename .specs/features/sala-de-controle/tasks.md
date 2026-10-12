@@ -553,10 +553,10 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] `tasks()`/`createTask`/`stopTask`/`resumeTask`/`removeTask` ligados ao Office (SC-21)
-- [ ] Terminal da tarefa abre pelo transcript normalizado (SC-24)
-- [ ] Gate check passes: `npm test`
-- [ ] Test count: `server/sources/cursor/source.test.ts` verde (sem remoção de teste)
+- [x] `tasks()`/`createTask`/`stopTask`/`resumeTask`/`removeTask` ligados ao Office (SC-21)
+- [x] Terminal da tarefa abre pelo transcript normalizado (SC-24)
+- [x] Gate check passes: `npm test`
+- [x] Test count: `server/sources/cursor/source.test.ts` verde (sem remoção de teste)
 
 **Tests**: unit
 **Gate**: full

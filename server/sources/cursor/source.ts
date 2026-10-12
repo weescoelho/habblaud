@@ -19,7 +19,7 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { githubEventKey } from '../../../shared/github';
-import type { Activity, AgentStats, AgentStatus, SourceInfo } from '../../../shared/types';
+import type { Activity, AgentStats, AgentStatus, CursorTaskInfo, SourceInfo } from '../../../shared/types';
 import { ACCOUNT_COLORS, type DetectedAccount } from '../../accounts/detect';
 import type { AccountEntry, AccountsService } from '../../accounts/service';
 import { log } from '../../log';
@@ -33,6 +33,7 @@ import type { CursorLive } from './live';
 import { describeCursorTool, parseCursorEvent, statusBorder, type CursorEvent } from './rollout';
 import { createCursorTerminalParser } from './terminal';
 import { cursorToolUses } from './transcript';
+import { TaskManager, type TaskHost, type TaskInput, type TaskManagerOptions, type TaskRemoveResult } from './tasks';
 
 /** Sem evento de hook por este tempo, a sessão é dada como encerrada (crash sem `sessionEnd`). */
 export const STALE_PRESENCE_MS = 5 * 60_000;
@@ -79,6 +80,11 @@ export interface CursorSourceOptions {
   pollMs?: number;
   /** Leitor compartilhado do transcript (uma leitura por agente serve N assinantes). Padrão: um novo hub. */
   hub?: TranscriptHub;
+  /**
+   * Opções das tarefas headless (P5, SC-21..SC-26): o `Office` entra pela própria fonte; o resto (spawn,
+   * worktrees, existência do binário e persistência) é injetável. Ausente = o TaskManager padrão.
+   */
+  tasks?: Omit<TaskManagerOptions, 'office'>;
 }
 
 /** Estado interno de um agente Cursor (um por conversation_id ou subagent_id). */
@@ -112,7 +118,7 @@ interface CursorTracker {
   stats: AgentStats;
 }
 
-export class CursorSource implements AgentSource, CursorLive {
+export class CursorSource implements AgentSource, CursorLive, TaskHost {
   readonly provider = 'cursor' as const;
   private entries: readonly AccountEntry[] = [];
   private readonly accountId = 'cursor';
@@ -123,12 +129,15 @@ export class CursorSource implements AgentSource, CursorLive {
   private readonly hub: TranscriptHub;
   /** Só fecha o hub no stop() se foi ele que o criou (a injeção é de quem compartilha: T4). */
   private readonly ownsHub: boolean;
+  /** Tarefas headless gerenciadas (P5): esta fonte as hospeda e expõe o ciclo às rotas (T18). */
+  private readonly taskManager: TaskManager;
 
   constructor(private readonly opts: CursorSourceOptions) {
     this.now = opts.now ?? Date.now;
     this.dir = opts.dir ?? resolve(join(opts.home, '.cursor'));
     this.hub = opts.hub ?? new TranscriptHub();
     this.ownsHub = !opts.hub;
+    this.taskManager = new TaskManager({ office: opts.office, dir: join(this.dir, 'tasks'), ...opts.tasks });
     this.register();
   }
 
@@ -149,6 +158,8 @@ export class CursorSource implements AgentSource, CursorLive {
   }
 
   start(): void {
+    // Reconcilia as tarefas persistidas: sem processo vivo, viram `stopped` (SC-25).
+    this.taskManager.reconcile();
     this.timer = setInterval(() => this.poll(), this.opts.pollMs ?? 1_000);
     this.timer.unref?.();
   }
@@ -156,6 +167,10 @@ export class CursorSource implements AgentSource, CursorLive {
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    // As tarefas gerenciadas morrem com a fonte: o processo é encerrado e a tarefa, persistida como parada (SC-25).
+    for (const t of this.taskManager.list()) {
+      if (t.status === 'running' || t.status === 'starting') this.taskManager.stop(t.id);
+    }
     for (const t of this.trackers.values()) this.unsub(t);
     if (this.ownsHub) this.hub.close();
   }
@@ -168,12 +183,42 @@ export class CursorSource implements AgentSource, CursorLive {
 
   /** Arquivo do transcript da conversa, quando um evento de hook já trouxe um caminho. */
   transcriptPathOf(agentId: string): string | undefined {
-    return this.trackers.get(agentId)?.transcriptPath;
+    // Agente de uma tarefa headless: o transcript é o JSONL normalizado pelo TaskManager (SC-24).
+    return this.taskManager.transcriptPathOf(agentId) ?? this.trackers.get(agentId)?.transcriptPath;
   }
 
   /** Terminal do Cursor: um parser novo por leitura, sempre que o agente é conhecido. */
   terminalParser(agentId: string): TerminalParser | undefined {
+    // Tarefa headless: o MESMO parser do Cursor sobre o transcript normalizado (SC-24).
+    if (this.taskManager.transcriptPathOf(agentId)) return createCursorTerminalParser();
     return this.trackers.has(agentId) ? createCursorTerminalParser() : undefined;
+  }
+
+  // ---------------------------------------------------------------- tarefas headless (P5)
+
+  /** As tarefas headless gerenciadas, da mais antiga para a mais recente (SC-21). */
+  tasks(): CursorTaskInfo[] {
+    return this.taskManager.list();
+  }
+
+  /** Abre uma tarefa headless (SC-21); falhas viram tarefa `failed`, não exceção (SC-26). */
+  createTask(input: TaskInput): Promise<CursorTaskInfo> {
+    return this.taskManager.create(input);
+  }
+
+  /** Encerra o processo da tarefa mantendo a sessão retomável (SC-25). */
+  stopTask(id: string): CursorTaskInfo | undefined {
+    return this.taskManager.stop(id);
+  }
+
+  /** Retoma a mesma sessão da tarefa (SC-25). */
+  resumeTask(id: string): Promise<CursorTaskInfo | undefined> {
+    return this.taskManager.resume(id);
+  }
+
+  /** Exclui a tarefa e limpa o worktree/branch quando não há alterações pendentes (SC-23). */
+  removeTask(id: string): Promise<TaskRemoveResult> {
+    return this.taskManager.remove(id);
   }
 
   /** Relógio de presença: força um ciclo do hub (o `fs.watch` já antecipa o comum) e remove os trackers sem evento novo. */
