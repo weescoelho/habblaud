@@ -310,9 +310,9 @@ worktree e vê-la na sala do projeto de origem com o rótulo da tarefa.
 | SC-29 | P6: Mensagem na IDE | - | Implementing |
 | SC-30 | P6: Mensagem na IDE | - | Implementing |
 | SC-31 | P6: Mensagem na IDE | - | Implementing |
-| SC-32 | P7: Skills | - | Pending |
-| SC-33 | P7: Skills | - | Pending |
-| SC-34 | P7: Skills | - | Pending |
+| SC-32 | P7: Skills | - | Implementing |
+| SC-33 | P7: Skills | - | Implementing |
+| SC-34 | P7: Skills | - | Implementing |
 | SC-35 | P8: Sala por local de execução | - | Pending |
 | SC-36 | P8: Sala por local de execução | - | Pending |
 | SC-37 | P8: Sala por local de execução | - | Pending |

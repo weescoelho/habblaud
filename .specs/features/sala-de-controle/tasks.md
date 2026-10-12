@@ -781,10 +781,10 @@ T18 -> T33
 - Skill: NONE
 
 **Done when**:
-- [ ] Lista `.cursor/skills`, `.agents/skills`, `~/.cursor/skills` com nome/descrição (SC-32)
-- [ ] `SKILL.md` malformado → `available:false` sem lançar (SC-34)
-- [ ] Gate check passes: `npx vitest run server/skills/catalog.test.ts`
-- [ ] Test count: casos válido/quebrado/ausente verde (sem remoção de teste)
+- [x] Lista `.cursor/skills`, `.agents/skills`, `~/.cursor/skills` com nome/descrição (SC-32)
+- [x] `SKILL.md` malformado → `available:false` sem lançar (SC-34)
+- [x] Gate check passes: `npx vitest run server/skills/catalog.test.ts`
+- [x] Test count: casos válido/quebrado/ausente verde (sem remoção de teste)
 
 **Tests**: unit
 **Gate**: quick

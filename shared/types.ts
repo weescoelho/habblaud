@@ -403,6 +403,18 @@ export interface CursorTaskInfo {
   error?: string;
 }
 
+/** Skill do catálogo (P7): lida de um `SKILL.md` em um dos diretórios conhecidos. */
+export interface SkillInfo {
+  name: string;
+  description?: string;
+  /** De onde veio: projeto (`.cursor/skills` ou `.agents/skills`) ou usuário (`~/.cursor/skills`). */
+  source: 'project' | 'agents' | 'user';
+  /** Diretório da skill. */
+  path: string;
+  /** `false` quando o `SKILL.md` está malformado ou sem frontmatter (SC-34). */
+  available: boolean;
+}
+
 export interface FeedItem {
   id: string;
   agentId: string;
